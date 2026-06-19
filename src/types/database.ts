@@ -1,0 +1,4 @@
+export type Product = { id: string; name: string; slug: string; short_description: string; full_description: string; category: string; price: number | null; etsy_url: string | null; main_image_url: string | null; video_url: string | null; materials: string | null; dimensions: string | null; customization_notes: string | null; tags: string[] | null; featured: boolean; active: boolean; created_at: string; updated_at: string };
+export type ProductMedia = { id: string; product_id: string; media_type: 'image' | 'video'; url: string; sort_order: number; created_at: string };
+export type Suggestion = { id: string; name: string; email: string; title: string; description: string; category: string; reference_link: string | null; budget_range: string | null; status: 'New'|'Reviewing'|'In Progress'|'Made'|'Rejected'; created_at: string };
+export type ContactMessage = { id: string; name: string; email: string; message: string; created_at: string };
