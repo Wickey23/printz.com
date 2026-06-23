@@ -78,7 +78,7 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
         <div>
           <p className="text-sm font-black text-zinc-100">Etsy IDs</p>
           <p className="mt-2 text-xs leading-5 text-zinc-500">
-            Auto-detect uses your connected Etsy account. Shipping/readiness are required for physical 3D printed drafts.
+            Auto-detect uses your connected Etsy account. If Etsy does not expose shipping or readiness values here, keep the manually entered ones. Shipping/readiness are required for physical 3D printed drafts.
           </p>
         </div>
         <button

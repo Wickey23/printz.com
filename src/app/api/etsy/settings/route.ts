@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isApprovedAdmin } from "@/lib/auth";
 import { discoverEtsyRuntimeIds } from "@/lib/etsy-discovery";
-import { getEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
+import { getEtsyOAuthToken, getSavedEtsyRuntimeSettings, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -42,14 +42,21 @@ export async function PUT() {
       accessToken: etsyToken.access_token,
       shopName: process.env.ETSY_SHOP_NAME || "printzbykhan",
     });
-    await setEtsyRuntimeSettings(settings);
+    const saved = await getSavedEtsyRuntimeSettings();
+    const mergedSettings = {
+      shopId: settings.shopId || saved.shopId,
+      taxonomyId: settings.taxonomyId || saved.taxonomyId,
+      shippingProfileId: settings.shippingProfileId || saved.shippingProfileId,
+      readinessStateId: settings.readinessStateId || saved.readinessStateId,
+    };
+    await setEtsyRuntimeSettings(mergedSettings);
 
     return NextResponse.json({
       ok: true,
       message: settings.notes.length
         ? `Auto-detected what Etsy allowed. Notes: ${settings.notes.join(" ")}`
         : "Auto-detected and saved Etsy IDs.",
-      settings,
+      settings: mergedSettings,
     });
   } catch (error) {
     return NextResponse.json(
