@@ -1,67 +1,89 @@
-# Sameer Made
+# PRINTZ Team Official
 
-A modern Next.js, TypeScript, Tailwind CSS, and Supabase website for an Etsy-based custom 3D printed / handmade product catalog. The site showcases active products and sends purchases to Etsy instead of implementing checkout.
+Modern Next.js catalog site for an Etsy shop. Products are showcased on this site, while purchases link out to Etsy.
 
-## Features
+## Stack
 
-- Premium responsive marketing pages: Home, Products, Product Detail, Suggest an Item, About, and Contact.
-- Product search, category filtering, featured/newest/price sorting, badges for Coming Soon and Custom Order Available.
-- Supabase-backed forms for product suggestions and contact messages.
-- Supabase Auth admin area at `/admin` with server-side checks against `ADMIN_EMAILS`.
-- Admin product management for create, edit, delete, active, and featured fields.
-- Suggestions dashboard with status updates.
-- SEO metadata for product detail pages and clean `/products/[slug]` URLs.
-- Vercel-ready environment variable configuration.
+- Next.js App Router, TypeScript, Tailwind CSS
+- Supabase Auth, Postgres, and Storage
+- Vercel deployment
 
-## Setup
+Render is not needed for this version because the app uses Vercel server functions and Supabase. Supabase has a free plan for small projects, and Vercel Hobby is free for personal projects, subject to their usage and commercial-use limits.
+
+## Local Setup
+
+1. Install dependencies:
 
 ```bash
 npm install
+```
+
+2. Copy `.env.example` to `.env.local` and fill in values:
+
+```bash
 cp .env.example .env.local
+```
+
+3. Create a Supabase project, then run `supabase/schema.sql` in the Supabase SQL editor.
+
+4. Add your admin email:
+
+```sql
+insert into public.admin_users (email) values ('you@example.com');
+```
+
+Also set `ADMIN_EMAILS=you@example.com` in `.env.local` and in Vercel.
+
+5. Create an auth user in Supabase Auth with the same email and a password.
+
+6. Start the app:
+
+```bash
 npm run dev
 ```
 
-Create `.env.local`:
+Open `http://localhost:3000`.
 
-```bash
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-ADMIN_EMAILS=owner@example.com,helper@example.com
-```
+## Environment Variables
 
-## Supabase
+- `NEXT_PUBLIC_SITE_URL`: production site URL
+- `NEXT_PUBLIC_ETSY_URL`: Etsy shop URL
+- `NEXT_PUBLIC_CONTACT_EMAIL`: public contact email
+- `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anon key
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key for server-only admin mutations
+- `ADMIN_EMAILS`: comma-separated approved admin emails
 
-1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the Supabase SQL editor.
-3. Create Auth users for approved admins.
-4. Add the same admin emails to `ADMIN_EMAILS` in Vercel and local env.
-5. Use the `product-media` public bucket for uploaded images/videos. Paste uploaded media URLs into products from the admin dashboard.
+Never expose `SUPABASE_SERVICE_ROLE_KEY` in client code.
 
-## Deployment on Vercel
+## Admin
+
+- Login: `/admin/login`
+- Dashboard: `/admin`
+- AI listing generator: `/admin/ai`
+- Add products: `/admin/products/new`
+- Edit products: use the Edit link from `/admin`
+- Etsy launch kit: `/admin/etsy`
+
+Admin routes check the logged-in Supabase user on the server and only allow emails in `ADMIN_EMAILS` or active rows in `admin_users`.
+
+See `docs/etsy-launch-kit.md` for shop setup copy, first-listing priorities, photo guidance, and launch checks.
+
+## Deployment
+
+### Vercel
 
 1. Push this repository to GitHub.
-2. Import it in Vercel.
-3. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `ADMIN_EMAILS` environment variables.
-4. Deploy. Purchases link to `https://www.etsy.com/shop/YOURSHOPNAME`; update `src/lib/config.ts` when your Etsy URL is ready.
+2. Import it in Vercel as a Next.js project.
+3. Add the same environment variables from `.env.example`.
+4. Deploy.
 
+### Supabase
 
-## Deployment on Render
-
-You can host this app on Render as a Node web service. You do not need a separate backend service because the Next.js server actions run inside the deployed web service and Supabase provides the database, authentication, and media storage.
-
-1. Push this repository to GitHub/GitLab/Bitbucket.
-2. In Render, create a new **Web Service** from the repo.
-3. Use these commands if Render does not auto-detect `render.yaml`:
-   - Build command: `npm install && npm run build`
-   - Start command: `npm run start`
-4. Add the same environment variables as Vercel:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `ADMIN_EMAILS`
-5. Keep Supabase as your backend for tables, auth, and storage.
-
-The included `render.yaml` describes the Render web service and required environment variables.
+Use the free plan to start if the shop has a small catalog and modest traffic. Upgrade when you need more database/storage capacity, backups, higher limits, or production support.
 
 ## Notes
 
-This app intentionally does not include checkout. Product CTAs link to Etsy listings when available, and otherwise display a Coming Soon state.
+- The public site falls back to sample products when Supabase variables are missing, so previews still work.
+- Suggestions and contact messages save to Supabase when the service role key is configured.
+- Products without an Etsy URL show a Coming Soon badge and do not create checkout on this site.

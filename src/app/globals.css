@@ -1,2 +1,49 @@
 @import "tailwindcss";
-:root{--bg:#09090b;--fg:#f4f4f5;--muted:#a1a1aa;--card:#121216;--line:#27272a;--accent:#f97316}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at top left,#27150b 0,#09090b 36rem),var(--bg);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui,sans-serif}.container{max-width:1180px;margin-inline:auto;padding-inline:1rem}.glass{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.025));border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 70px rgba(0,0,0,.25)}.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:.8rem 1.15rem;font-weight:800;transition:.2s}.btn-primary{background:#fff;color:#09090b}.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 30px rgba(255,255,255,.13)}.btn-ghost{border:1px solid #3f3f46;color:#fff}.btn-ghost:hover{border-color:#fff;background:rgba(255,255,255,.06)}.input{width:100%;border-radius:1rem;border:1px solid #3f3f46;background:#0f0f13;padding:.85rem 1rem;color:#fff;outline:none}.input:focus{border-color:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.15)}.badge{border-radius:999px;border:1px solid rgba(255,255,255,.12);padding:.25rem .55rem;font-size:.72rem;font-weight:800;color:#fed7aa;background:rgba(249,115,22,.09)}.fade-up{animation:fadeUp .55s ease both}@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: #fcd34d;
+  color: #09090b;
+}
+
+.surface-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.hero-wheel {
+  scrollbar-color: #fcd34d rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.hero-wheel::-webkit-scrollbar {
+  height: 8px;
+}
+
+.hero-wheel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.hero-wheel::-webkit-scrollbar-thumb {
+  background: #fcd34d;
+  border-radius: 999px;
+}

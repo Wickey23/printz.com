@@ -1,2 +1,18 @@
-'use client'; import { useActionState } from 'react'; import { signIn } from '@/lib/actions';
-export default function Login(){const [state,action,pending]=useActionState(signIn,{ok:false,message:''}); return <section className="container max-w-md py-20"><h1 className="text-4xl font-black">Admin login</h1><form action={action} className="glass mt-8 grid gap-4 rounded-3xl p-6"><input className="input" name="email" type="email" placeholder="Email" required/><input className="input" name="password" type="password" placeholder="Password" required/><button className="btn btn-primary" disabled={pending}>{pending?'Signing in...':'Sign in'}</button>{state.message&&<p className="text-red-300">{state.message}</p>}</form></section>}
+import type { Metadata } from "next";
+import { AdminLoginForm } from "@/components/admin-login-form";
+
+export const metadata: Metadata = {
+  title: "Admin Login",
+};
+
+export default function AdminLoginPage() {
+  return (
+    <section className="mx-auto max-w-md px-4 py-16 sm:px-6">
+      <div className="mb-8">
+        <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-200">Admin</p>
+        <h1 className="mt-3 text-4xl font-black text-zinc-50">Sign in</h1>
+      </div>
+      <AdminLoginForm />
+    </section>
+  );
+}

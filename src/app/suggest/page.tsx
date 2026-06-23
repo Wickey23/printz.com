@@ -1,2 +1,22 @@
-import { ActionForm } from '@/components/FormStatus'; import { submitSuggestion } from '@/lib/actions'; import { categories } from '@/lib/config';
-export const metadata={title:'Suggest an Item'}; export default function Suggest(){return <section className="container max-w-3xl py-12"><h1 className="text-4xl font-black">Suggest an Item</h1><p className="mt-3 text-zinc-400">Share an idea for a custom print, gift, accessory, or collectible. No login required.</p><div className="glass mt-8 rounded-3xl p-6"><ActionForm action={submitSuggestion}><input className="input" name="name" placeholder="Name" required/><input className="input" name="email" type="email" placeholder="Email" required/><input className="input" name="title" placeholder="Product idea title" required/><textarea className="input min-h-36" name="description" placeholder="Description" required/><select className="input" name="category" required>{categories.map(c=><option key={c}>{c}</option>)}</select><input className="input" name="reference_link" placeholder="Reference link (optional)"/><input className="input" name="budget_range" placeholder="Budget range (optional)"/></ActionForm></div></section>}
+import type { Metadata } from "next";
+import { SuggestionForm } from "@/components/suggestion-form";
+
+export const metadata: Metadata = {
+  title: "Suggest an Item",
+  description: "Send a custom 3D print or handmade product idea.",
+};
+
+export default function SuggestPage() {
+  return (
+    <section className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
+      <div>
+        <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-200">Custom Ideas</p>
+        <h1 className="mt-3 text-4xl font-black text-zinc-50 sm:text-5xl">Suggest an item</h1>
+        <p className="mt-5 leading-8 text-zinc-400">
+          Share a product idea, reference, budget range, or customization request. No account required.
+        </p>
+      </div>
+      <SuggestionForm />
+    </section>
+  );
+}
