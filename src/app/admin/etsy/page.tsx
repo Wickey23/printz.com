@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Bot, CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
 import { EtsySettingsPanel } from "@/components/etsy-settings-panel";
 import { EtsySyncPanel } from "@/components/etsy-sync-panel";
 import { requireAdmin } from "@/lib/auth";
@@ -81,6 +81,24 @@ export default async function EtsyControlCenterPage() {
 
         <aside className="grid h-fit gap-5">
           <EtsySyncPanel />
+          <div className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <ExternalLink className="text-amber-200" size={20} />
+              <h2 className="text-xl font-black text-zinc-50">Full API use</h2>
+            </div>
+            <div className="mt-4 grid gap-2 text-sm leading-6 text-zinc-300">
+              <ApiStep done label="Sync active listings into products" />
+              <ApiStep done label="Create basic Etsy drafts from products" />
+              <ApiStep label="Refresh OAuth tokens automatically" />
+              <ApiStep label="Upload product images and digital files" />
+              <ApiStep label="Create request-specific Etsy checkout drafts" />
+              <ApiStep label="Sync Etsy receipts back to requests" />
+              <ApiStep label="Manage shop sections and sales messages" />
+            </div>
+            <Link className="mt-4 inline-flex h-10 items-center rounded-md border border-white/10 px-4 text-sm font-bold text-zinc-200 hover:border-amber-300/50" href="/admin/pricing">
+              Price requests before Etsy draft
+            </Link>
+          </div>
           <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-5">
             <div className="flex items-center gap-2">
               <Bot className="text-amber-100" size={20} />
@@ -102,10 +120,19 @@ function Prompt({ text }: { text: string }) {
   return <p className="rounded-md border border-white/10 bg-zinc-950 px-3 py-2">{text}</p>;
 }
 
+function ApiStep({ done, label }: { done?: boolean; label: string }) {
+  return (
+    <p className="flex items-center gap-2 rounded-md border border-white/10 bg-zinc-950 px-3 py-2">
+      {done ? <CheckCircle2 className="shrink-0 text-emerald-300" size={15} /> : <AlertTriangle className="shrink-0 text-amber-200" size={15} />}
+      <span>{label}</span>
+    </p>
+  );
+}
+
 function etsySetupItems(hasOAuthToken: boolean, settings: { shopId: string; taxonomyId: string; shippingProfileId: string; readinessStateId: string }) {
   return [
     { key: "ETSY_API_KEY", label: "API keystring + shared secret", ok: Boolean(process.env.ETSY_API_KEY) },
-    { key: "ETSY_ACCESS_TOKEN", label: "Connected Etsy OAuth with listings_w", ok: Boolean(process.env.ETSY_ACCESS_TOKEN) || hasOAuthToken },
+    { key: "ETSY_ACCESS_TOKEN", label: "Connected Etsy OAuth with listing, shop, and order scopes", ok: Boolean(process.env.ETSY_ACCESS_TOKEN) || hasOAuthToken },
     { key: "ETSY_SHOP_ID", label: "Shop ID", ok: Boolean(settings.shopId) },
     { key: "ETSY_DEFAULT_TAXONOMY_ID", label: "Default taxonomy ID", ok: Boolean(settings.taxonomyId) },
     { key: "ETSY_SHIPPING_PROFILE_ID", label: "Shipping profile ID for physical items", ok: Boolean(settings.shippingProfileId) },

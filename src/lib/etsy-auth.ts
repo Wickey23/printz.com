@@ -33,7 +33,7 @@ export function etsyRedirectUri() {
 }
 
 export function etsyScopes() {
-  return ["listings_r", "listings_w", "shops_r", "transactions_r"].join(" ");
+  return ["listings_r", "listings_w", "shops_r", "shops_w", "transactions_r"].join(" ");
 }
 
 export function makeCodeVerifier() {

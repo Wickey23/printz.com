@@ -11,34 +11,44 @@ type Inputs = {
   printHours: number;
   machineHourly: number;
   laborMinutes: number;
+  postProcessingMinutes: number;
+  designReviewMinutes: number;
   laborHourly: number;
   packaging: number;
+  shippingSubsidy: number;
   failureRate: number;
   profitMargin: number;
   etsyTransactionRate: number;
   etsyPaymentRate: number;
+  etsyAdRate: number;
   etsyFixedFee: number;
+  listingFee: number;
   competitorLow: number;
   competitorHigh: number;
   shippingChargedSeparately: boolean;
 };
 
 const defaults: Inputs = {
-  filamentGrams: 80,
-  spoolCost: 22,
+  filamentGrams: 95,
+  spoolCost: 24,
   spoolGrams: 1000,
-  printHours: 5,
-  machineHourly: 0.35,
-  laborMinutes: 15,
-  laborHourly: 18,
-  packaging: 1.25,
-  failureRate: 12,
-  profitMargin: 45,
+  printHours: 6.5,
+  machineHourly: 0.65,
+  laborMinutes: 12,
+  postProcessingMinutes: 10,
+  designReviewMinutes: 8,
+  laborHourly: 20,
+  packaging: 1.85,
+  shippingSubsidy: 0,
+  failureRate: 15,
+  profitMargin: 50,
   etsyTransactionRate: 6.5,
   etsyPaymentRate: 3,
+  etsyAdRate: 0,
   etsyFixedFee: 0.45,
-  competitorLow: 14.99,
-  competitorHigh: 24.99,
+  listingFee: 0.2,
+  competitorLow: 24.99,
+  competitorHigh: 39.99,
   shippingChargedSeparately: true,
 };
 
@@ -57,7 +67,7 @@ export function PriceCalculator() {
     `Floor price: ${formatPrice(result.floorPrice)}`,
     `Competitive range: ${formatPrice(result.competitiveLow)} - ${formatPrice(result.competitiveHigh)}`,
     `Estimated profit: ${formatPrice(result.profit)}`,
-    `Costs: filament ${formatPrice(result.filamentCost)}, print time ${formatPrice(result.machineCost)}, labor ${formatPrice(result.laborCost)}, packaging ${formatPrice(result.packagingCost)}, failure buffer ${formatPrice(result.failureBuffer)}, Etsy fees ${formatPrice(result.etsyFees)}`,
+    `Costs: filament ${formatPrice(result.filamentCost)}, machine ${formatPrice(result.machineCost)}, labor ${formatPrice(result.laborCost)}, packaging ${formatPrice(result.packagingCost)}, shipping subsidy ${formatPrice(result.shippingSubsidy)}, failure buffer ${formatPrice(result.failureBuffer)}, Etsy fees ${formatPrice(result.etsyFees)}`,
   ].join("\n");
 
   return (
@@ -67,7 +77,7 @@ export function PriceCalculator() {
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-200">Inputs</p>
           <h2 className="mt-2 text-2xl font-black text-zinc-50">3D print pricing</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-400">
-            Start with your slicer estimates, then compare against Etsy pricing. Keep shipping separate when possible so item pricing stays competitive.
+            Start with slicer estimates, then price for real Etsy costs: machine wear, hands-on handling, post-processing, reprints, payment fees, listing fees, and any shipping discount you absorb.
           </p>
         </div>
 
@@ -77,9 +87,12 @@ export function PriceCalculator() {
           <NumberField label="Spool size" suffix="g" value={inputs.spoolGrams} onChange={(value) => update("spoolGrams", value)} />
           <NumberField label="Print time" suffix="hrs" value={inputs.printHours} onChange={(value) => update("printHours", value)} />
           <NumberField label="Printer/electricity wear" prefix="$" suffix="/hr" value={inputs.machineHourly} step={0.05} onChange={(value) => update("machineHourly", value)} />
-          <NumberField label="Hands-on labor" suffix="min" value={inputs.laborMinutes} onChange={(value) => update("laborMinutes", value)} />
+          <NumberField label="Setup / packing labor" suffix="min" value={inputs.laborMinutes} onChange={(value) => update("laborMinutes", value)} />
+          <NumberField label="Cleanup / post-process" suffix="min" value={inputs.postProcessingMinutes} onChange={(value) => update("postProcessingMinutes", value)} />
+          <NumberField label="Model review / design" suffix="min" value={inputs.designReviewMinutes} onChange={(value) => update("designReviewMinutes", value)} />
           <NumberField label="Labor rate" prefix="$" suffix="/hr" value={inputs.laborHourly} onChange={(value) => update("laborHourly", value)} />
           <NumberField label="Packaging cost" prefix="$" value={inputs.packaging} step={0.05} onChange={(value) => update("packaging", value)} />
+          <NumberField label="Shipping discount absorbed" prefix="$" value={inputs.shippingSubsidy} step={0.25} onChange={(value) => update("shippingSubsidy", value)} />
         </div>
 
         <div className="grid gap-5 border-t border-white/10 pt-5 sm:grid-cols-2">
@@ -87,7 +100,9 @@ export function PriceCalculator() {
           <NumberField label="Target profit margin" suffix="%" value={inputs.profitMargin} onChange={(value) => update("profitMargin", value)} />
           <NumberField label="Etsy transaction fee" suffix="%" value={inputs.etsyTransactionRate} step={0.1} onChange={(value) => update("etsyTransactionRate", value)} />
           <NumberField label="Payment processing fee" suffix="%" value={inputs.etsyPaymentRate} step={0.1} onChange={(value) => update("etsyPaymentRate", value)} />
-          <NumberField label="Fixed order/listing fees" prefix="$" value={inputs.etsyFixedFee} step={0.05} onChange={(value) => update("etsyFixedFee", value)} />
+          <NumberField label="Ads / offsite fee buffer" suffix="%" value={inputs.etsyAdRate} step={0.5} onChange={(value) => update("etsyAdRate", value)} />
+          <NumberField label="Payment fixed fee" prefix="$" value={inputs.etsyFixedFee} step={0.05} onChange={(value) => update("etsyFixedFee", value)} />
+          <NumberField label="Listing / renewal fee" prefix="$" value={inputs.listingFee} step={0.05} onChange={(value) => update("listingFee", value)} />
           <label className="flex items-center gap-3 rounded-md border border-white/10 bg-zinc-950 px-4 py-3 text-sm font-semibold text-zinc-200">
             <input
               checked={inputs.shippingChargedSeparately}
@@ -134,12 +149,13 @@ export function PriceCalculator() {
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Cost breakdown</p>
           <dl className="mt-3 grid gap-2 text-sm">
             <ResultRow label="Filament" value={formatPrice(result.filamentCost)} />
-            <ResultRow label="Print time" value={formatPrice(result.machineCost)} />
-            <ResultRow label="Labor" value={formatPrice(result.laborCost)} />
-            <ResultRow label="Packaging" value={formatPrice(result.packagingCost)} />
-            <ResultRow label="Failure buffer" value={formatPrice(result.failureBuffer)} />
-            <ResultRow label="Etsy fees" value={formatPrice(result.etsyFees)} />
-          </dl>
+          <ResultRow label="Print time" value={formatPrice(result.machineCost)} />
+          <ResultRow label="Labor" value={formatPrice(result.laborCost)} />
+          <ResultRow label="Packaging" value={formatPrice(result.packagingCost)} />
+          <ResultRow label="Shipping subsidy" value={formatPrice(result.shippingSubsidy)} />
+          <ResultRow label="Failure buffer" value={formatPrice(result.failureBuffer)} />
+          <ResultRow label="Etsy fees" value={formatPrice(result.etsyFees)} />
+        </dl>
         </div>
 
         <button
@@ -205,17 +221,20 @@ function ResultRow({ label, value, strong }: { label: string; value: string; str
 function calculatePrice(inputs: Inputs) {
   const filamentCost = inputs.spoolGrams > 0 ? (inputs.filamentGrams / inputs.spoolGrams) * inputs.spoolCost : 0;
   const machineCost = inputs.printHours * inputs.machineHourly;
-  const laborCost = (inputs.laborMinutes / 60) * inputs.laborHourly;
+  const totalLaborMinutes = inputs.laborMinutes + inputs.postProcessingMinutes + inputs.designReviewMinutes;
+  const laborCost = (totalLaborMinutes / 60) * inputs.laborHourly;
   const packagingCost = inputs.packaging;
-  const baseCost = filamentCost + machineCost + laborCost + packagingCost;
+  const shippingSubsidy = inputs.shippingChargedSeparately ? inputs.shippingSubsidy : Math.max(inputs.shippingSubsidy, 5);
+  const baseCost = filamentCost + machineCost + laborCost + packagingCost + shippingSubsidy;
   const failureBuffer = baseCost * (inputs.failureRate / 100);
   const costWithBuffer = baseCost + failureBuffer;
 
   const marginDecimal = Math.min(inputs.profitMargin / 100, 0.85);
   const preFeeTarget = costWithBuffer / Math.max(1 - marginDecimal, 0.15);
-  const feeRate = (inputs.etsyTransactionRate + inputs.etsyPaymentRate) / 100;
-  const floorPrice = (costWithBuffer + inputs.etsyFixedFee) / Math.max(1 - feeRate - 0.12, 0.5);
-  const formulaPrice = (preFeeTarget + inputs.etsyFixedFee) / Math.max(1 - feeRate, 0.5);
+  const feeRate = (inputs.etsyTransactionRate + inputs.etsyPaymentRate + inputs.etsyAdRate) / 100;
+  const fixedFees = inputs.etsyFixedFee + inputs.listingFee;
+  const floorPrice = (costWithBuffer + fixedFees) / Math.max(1 - feeRate - 0.12, 0.5);
+  const formulaPrice = (preFeeTarget + fixedFees) / Math.max(1 - feeRate, 0.5);
   const competitorMid = (inputs.competitorLow + inputs.competitorHigh) / 2;
   const competitiveLow = Math.max(inputs.competitorLow, floorPrice);
   const competitiveHigh = Math.max(inputs.competitorHigh, competitiveLow);
@@ -230,22 +249,23 @@ function calculatePrice(inputs: Inputs) {
     }
   }
 
-  const etsyFees = suggestedPrice * feeRate + inputs.etsyFixedFee;
+  const etsyFees = suggestedPrice * feeRate + fixedFees;
   const profit = suggestedPrice - costWithBuffer - etsyFees;
   const effectiveMargin = suggestedPrice > 0 ? (profit / suggestedPrice) * 100 : 0;
 
   const guidance =
     suggestedPrice > inputs.competitorHigh && inputs.competitorHigh > 0
-      ? "Your real cost is above the current competitor range. Consider reducing print time, lowering grams, charging separately for customization, or positioning it as a premium/custom item."
+      ? "Your real cost is above the current competitor range. Reduce print time, quote it as custom/premium, charge separately for personalization, or avoid this product."
       : suggestedPrice < inputs.competitorLow
-        ? "You have room to price higher. Match the lower competitor range unless you intentionally want an entry offer."
-        : "This lands inside the competitor range while covering material, time, failure risk, fees, and profit.";
+        ? "You have room to price higher. Match the lower competitor range unless this is intentionally a low-price add-on."
+        : "This lands inside the competitor range while covering material, machine time, labor, reprint risk, Etsy fees, and profit.";
 
   return {
     filamentCost,
     machineCost,
     laborCost,
     packagingCost,
+    shippingSubsidy,
     failureBuffer,
     floorPrice,
     suggestedPrice,

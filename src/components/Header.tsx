@@ -13,7 +13,7 @@ export function Header() {
     <header className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/80 backdrop-blur-xl">
       <div className="container flex h-16 items-center justify-between gap-4">
         <Link href="/" className="text-xl font-black tracking-tight">
-          {siteConfig.shopName}
+          {siteConfig.name}
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm text-zinc-300 md:flex">

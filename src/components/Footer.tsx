@@ -6,7 +6,7 @@ export function Footer() {
     <footer className="mt-24 border-t border-white/10 py-10 text-zinc-400">
       <div className="container grid gap-8 md:grid-cols-3">
         <div>
-          <p className="font-black text-white">{siteConfig.shopName}</p>
+          <p className="font-black text-white">{siteConfig.name}</p>
           <p className="mt-2 max-w-sm">Creative custom prints, decor, collectibles, and functional handmade pieces.</p>
         </div>
 

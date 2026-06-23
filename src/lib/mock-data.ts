@@ -9,7 +9,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A clean, high-demand desk organizer based on a real MakerWorld listing by Nils Kal. Strong Etsy direction: desk setup upgrades, office gifts, and premium two-tone print finishes.",
     category: "Desk Accessories",
-    price: 34,
+    price: 44,
     etsy_url: null,
     main_image_url:
       "https://makerworld.bblmw.com/makerworld/model/USdbf99b12953d2d/design/2024-11-13_c6fc58c135d26.png?x-oss-process=image%2Fresize%2Cw_1000%2Fformat%2Cwebp",
@@ -34,7 +34,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A flexible organizer system from MakerWorld with adjustable width, depth, height, rows, columns, dividers, tray, and front-cut options. This is a strong product direction because it can become many SKUs from one configurable model.",
     category: "Desk Accessories",
-    price: 38,
+    price: 48,
     etsy_url: null,
     main_image_url:
       "https://makerworld.bblmw.com/makerworld/model/US6d9cc0286b8702/design/2025-08-01_dfe42dc14e563.jpg?x-oss-process=image%2Fresize%2Cw_1000%2Fformat%2Cwebp",
@@ -59,7 +59,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A proven MakerWorld coaster listing by Anders3D with strong engagement and attractive real-user photos. This has clear Etsy potential as a giftable set, especially in bronze, charcoal, marble, and wood-look PLA.",
     category: "Decor",
-    price: 26,
+    price: 29,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://makerworld.bblmw.com/makerworld/model/US22513d95d744a2/design/2025-02-02_bf50b4d33da168.jpg?x-oss-process=image%2Fresize%2Cw_1000%2Fformat%2Cwebp",
@@ -84,7 +84,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A functional print selected from Printables research because it solves a daily problem: large bottles and tumblers that do not fit standard car cup holders. Avoid protected brand names in the Etsy title unless permitted.",
     category: "Functional Prints",
-    price: 24,
+    price: 32,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://media.printables.com/media/prints/120213/images/1166547_4c1f4db2-373f-457d-817f-e886286d3263/thumbs/cover/1200x630/jpg/img_3771.jpg",
@@ -109,7 +109,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A practical school/office product from Printables. It is small, fast to print, and useful for teachers, tutoring rooms, offices, and home whiteboards.",
     category: "Functional Prints",
-    price: 14,
+    price: 16,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://media.printables.com/media/prints/8565/images/66759_d9250482-81e8-4399-b374-37ac2f6def60/thumbs/cover/1200x630/jpeg/a17760cd-bb55-409c-b118-1a9552ffb6d7_8565.jpg",
@@ -134,7 +134,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A high-visual MakerWorld product direction from HpInvent's inflated bathroom set. Good Etsy angle: bathroom counter organization, makeup brush holder, and matching bathroom accessory sets.",
     category: "Decor",
-    price: 36,
+    price: 46,
     etsy_url: null,
     main_image_url:
       "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80",
@@ -159,7 +159,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A cute novelty desk product inspired by MakerWorld dinosaur pen holder listings. Good for kids, teachers, study desks, and gift bundles, but test-print before selling because some model comments mention usability and support cleanup issues.",
     category: "Desk Accessories",
-    price: 22,
+    price: 28,
     etsy_url: null,
     main_image_url:
       "https://makerworld.bblmw.com/makerworld/model/US909f81076d9a24/design/2025-04-25_b4f507dd4b5e18.png?x-oss-process=image%2Fresize%2Cw_1000%2Fformat%2Cwebp",
@@ -184,7 +184,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A personalization-first product direction from MakerWorld customizable name organizer listings. This is likely one of the best Etsy angles because names, colors, and roles create easy custom-order upsells.",
     category: "Custom Orders",
-    price: 29,
+    price: 39,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
@@ -209,7 +209,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A home-decor product direction based on Printables store listings from MODERN MACHINE/Terra de Verdant. Strong Etsy appeal because it combines utility, decor, and plant-parent gifting.",
     category: "Decor",
-    price: 42,
+    price: 52,
     etsy_url: null,
     main_image_url:
       "https://media.printables.com/media/prints/926791/images/7068150_28d22501-87d2-4ee3-a6dd-68f497a3d57f_07043cf6-6059-4114-871a-c391d34689e1/thumbs/cover/1200x630/jpg/dsc05724-2.jpg",
@@ -234,7 +234,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A compact organizer box selected because small storage products photograph well, ship easily, and fit gift/search demand. Add felt inserts or initials for higher perceived value.",
     category: "Decor",
-    price: 32,
+    price: 38,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://images.unsplash.com/photo-1610701596061-2ecf227e85b2?auto=format&fit=crop&w=1200&q=80",
@@ -259,7 +259,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A low-material, fast-print stationery item inspired by Printables floral paper clip listings. Great as an Etsy add-on because it can be sold in sets, shipped cheaply, and photographed in color bundles.",
     category: "Desk Accessories",
-    price: 12,
+    price: 13,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://media.printables.com/media/prints/795643/images/6161806_e22c2463-f885-4814-a57f-08b6d9a4cb08_2a0f97bf-0f8a-4b76-9069-f4463681274f/thumbs/cover/1200x630/jpg/1000002966.jpg",
@@ -283,7 +283,7 @@ export const mockProducts: Product[] = [
     full_description:
       "A coaster set based on the popularity of automotive wheel coaster models on Printables. This has strong gift appeal, but avoid protected vehicle logos, brand marks, and exact OEM wheel designs unless licensed.",
     category: "Decor",
-    price: 26,
+    price: 30,
     etsy_url: "https://printzbykhan.etsy.com",
     main_image_url:
       "https://media.printables.com/media/prints/8361436c-127f-44a6-8995-e02c1623b988/images/11213038_6d8b9eb8-b3a3-4b25-b7d7-b202968e9f46_e552c24c-6aa8-4997-8d86-cfe90af7e4f2/thumbs/cover/1200x630/jpg/pxl_20251118_232220643-1.jpg",
