@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import type React from "react";
-import { Calculator, CheckCircle2, ExternalLink, Eye, EyeOff, FileArchive, ImageIcon, ImagePlus, Loader2, LogIn, Search, Upload, Video } from "lucide-react";
+import { Calculator, CheckCircle2, Copy, ExternalLink, Eye, EyeOff, FileArchive, ImageIcon, ImagePlus, Loader2, LogIn, Search, Upload, Video } from "lucide-react";
 import {
   createCustomPrintRequest,
   signInCustomer,
@@ -586,6 +586,7 @@ function PrintLookup({
 }) {
   const [query, setQuery] = useState("");
   const [sourceUrl, setSourceUrl] = useState(modelSourceUrl);
+  const [copyMessage, setCopyMessage] = useState("");
   const guessedPlatform = guessProvider(sourceUrl);
 
   function saveSource() {
@@ -629,18 +630,15 @@ function PrintLookup({
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {printLookupProviders.map((provider) => (
-          <a
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-white/10 px-3 text-sm font-bold text-zinc-200 transition hover:border-amber-300/40 hover:text-amber-100"
-            href={providerSearchUrl(provider, query)}
+          <ProviderSearchLink
             key={provider.name}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {provider.name}
-            <ExternalLink size={14} />
-          </a>
+            label={provider.name}
+            onCopied={() => setCopyMessage(`Copied ${provider.name} search link.`)}
+            url={providerSearchUrl(provider, query)}
+          />
         ))}
       </div>
+      {copyMessage ? <p className="text-sm font-semibold text-emerald-300">{copyMessage}</p> : null}
 
       <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
         <label className="grid gap-2 text-sm font-bold text-zinc-200">
@@ -666,6 +664,43 @@ function PrintLookup({
         We still verify license and printability before quoting. Upload files too if you already downloaded them.
       </p>
     </section>
+  );
+}
+
+function ProviderSearchLink({
+  label,
+  onCopied,
+  url,
+}: {
+  label: string;
+  onCopied: () => void;
+  url: string;
+}) {
+  async function copyUrl() {
+    await navigator.clipboard.writeText(url);
+    onCopied();
+  }
+
+  return (
+    <div className="grid gap-2 rounded-md border border-white/10 p-2">
+      <a
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-zinc-900 px-3 text-sm font-bold text-zinc-200 transition hover:text-amber-100"
+        href={url}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {label}
+        <ExternalLink size={14} />
+      </a>
+      <button
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-white/10 px-3 text-xs font-bold text-zinc-300 transition hover:border-amber-300/40 hover:text-amber-100"
+        onClick={() => void copyUrl()}
+        type="button"
+      >
+        <Copy size={13} />
+        Copy link
+      </button>
+    </div>
   );
 }
 
