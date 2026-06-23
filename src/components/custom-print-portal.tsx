@@ -31,6 +31,10 @@ const modelAccept =
 export function CustomPrintPortal({
   defaultShippingAddress,
   defaultShippingName,
+  initialModelSourcePlatform = "",
+  initialModelSourceUrl = "",
+  initialNotes = "",
+  initialTitle = "",
   printableModels,
   signedIn,
   requests,
@@ -38,6 +42,10 @@ export function CustomPrintPortal({
 }: {
   defaultShippingAddress?: string;
   defaultShippingName?: string;
+  initialModelSourcePlatform?: string;
+  initialModelSourceUrl?: string;
+  initialNotes?: string;
+  initialTitle?: string;
   printableModels: PrintableModel[];
   signedIn: boolean;
   requests: CustomPrintRequest[];
@@ -49,6 +57,14 @@ export function CustomPrintPortal({
     return (
       <div className="grid gap-8">
         <PublicPrintLookup models={printableModels} onSelect={setSelectedModel} selectedModel={selectedModel} />
+        {initialTitle || initialModelSourceUrl ? (
+          <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-4">
+            <p className="text-sm font-black text-amber-100">Selected product request</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-200">
+              {initialTitle || "This product"} is ready to request. Sign in or create an account below, then the request form will open with the source model details filled in.
+            </p>
+          </div>
+        ) : null}
         <CustomerAuthPanel />
       </div>
     );
@@ -59,6 +75,10 @@ export function CustomPrintPortal({
       <CustomPrintRequestForm
         defaultShippingAddress={defaultShippingAddress}
         defaultShippingName={defaultShippingName}
+        initialModelSourcePlatform={initialModelSourcePlatform}
+        initialModelSourceUrl={initialModelSourceUrl}
+        initialNotes={initialNotes}
+        initialTitle={initialTitle}
         models={printableModels}
         selectedModel={selectedModel}
         setSelectedModel={setSelectedModel}
@@ -164,6 +184,10 @@ function PasswordField({ label, name, placeholder }: { label: string; name: stri
 function CustomPrintRequestForm({
   defaultShippingAddress,
   defaultShippingName,
+  initialModelSourcePlatform,
+  initialModelSourceUrl,
+  initialNotes,
+  initialTitle,
   models,
   selectedModel,
   setSelectedModel,
@@ -171,6 +195,10 @@ function CustomPrintRequestForm({
 }: {
   defaultShippingAddress?: string;
   defaultShippingName?: string;
+  initialModelSourcePlatform: string;
+  initialModelSourceUrl: string;
+  initialNotes: string;
+  initialTitle: string;
   models: PrintableModel[];
   selectedModel: PrintableModel | null;
   setSelectedModel: (model: PrintableModel | null) => void;
@@ -178,10 +206,10 @@ function CustomPrintRequestForm({
 }) {
   const [state, action, pending] = useActionState(createCustomPrintRequest, requestState);
   const [uploads, setUploads] = useState<UploadedFile[]>([]);
-  const [modelSourceUrl, setModelSourceUrl] = useState("");
-  const [modelSourcePlatform, setModelSourcePlatform] = useState("");
-  const [projectTitle, setProjectTitle] = useState("");
-  const [printNotes, setPrintNotes] = useState("");
+  const [modelSourceUrl, setModelSourceUrl] = useState(initialModelSourceUrl);
+  const [modelSourcePlatform, setModelSourcePlatform] = useState(initialModelSourcePlatform);
+  const [projectTitle, setProjectTitle] = useState(initialTitle);
+  const [printNotes, setPrintNotes] = useState(initialNotes);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [grams, setGrams] = useState("");

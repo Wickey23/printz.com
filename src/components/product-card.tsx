@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, Download, Package, Sparkles } from "lucide-react";
 import type { Product, ProductMedia } from "@/lib/types";
+import { isRequestOnlyProduct } from "@/lib/product-flags";
 import { formatPrice } from "@/lib/utils";
 
 export function ProductCard({ media = [], product }: { media?: ProductMedia[]; product: Product }) {
   const isDigital = product.category === "Digital Products" || product.tags?.some((tag) => tag.toLowerCase().includes("digital"));
+  const requestOnly = isRequestOnlyProduct(product);
   const gallery = productCardGallery(product, media);
 
   return (
@@ -50,9 +52,13 @@ export function ProductCard({ media = [], product }: { media?: ProductMedia[]; p
                 Synced from Etsy
               </span>
             ) : null}
-            {!product.etsy_url ? (
+            {requestOnly ? (
+              <span className="rounded-md bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-zinc-950">
+                Request print
+              </span>
+            ) : !product.etsy_url ? (
               <span className="rounded-md bg-zinc-950/80 px-2.5 py-1 text-xs font-bold text-zinc-100">
-                Coming Soon
+                Coming soon
               </span>
             ) : null}
           </div>
@@ -71,7 +77,7 @@ export function ProductCard({ media = [], product }: { media?: ProductMedia[]; p
             </p>
           </div>
           <span className="inline-flex items-center gap-2 text-sm font-bold text-amber-200">
-            {product.etsy_url ? "View and buy" : "View details"} <ArrowRight size={16} />
+            {requestOnly ? "Request this print" : product.etsy_url ? "View and buy" : "View details"} <ArrowRight size={16} />
           </span>
         </div>
       </Link>

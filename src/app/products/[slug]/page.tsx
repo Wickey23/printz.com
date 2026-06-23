@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, Download, Mail, Package, Palette, Ruler, ShieldCheck, Sparkles, Wand2 } from "lucide-react";
 import { getProductBySlug, getProductMedia } from "@/lib/data";
+import { isRequestOnlyProduct, requestPrintHref } from "@/lib/product-flags";
 import type { ProductMedia } from "@/lib/types";
 import { formatPrice } from "@/lib/utils";
 
@@ -36,6 +37,8 @@ export default async function ProductDetailPage({ params }: Props) {
   const media = await getProductMedia(product.id);
   const gallery = buildProductGallery(product.main_image_url, media);
   const isDigital = product.category === "Digital Products" || product.tags?.some((tag) => tag.toLowerCase().includes("digital"));
+  const requestOnly = isRequestOnlyProduct(product);
+  const requestHref = requestPrintHref(product);
   const hasCustomization =
     product.personalization_enabled ||
     Boolean(product.customization_notes) ||
@@ -94,7 +97,8 @@ export default async function ProductDetailPage({ params }: Props) {
             {isDigital ? "Digital download" : "Physical item"}
           </span>
           {product.etsy_listing_id ? <span className="rounded-md bg-emerald-400/15 px-3 py-1 text-sm font-bold text-emerald-200">Synced from Etsy</span> : null}
-          {!product.etsy_url ? <span className="rounded-md bg-zinc-800 px-3 py-1 text-sm font-bold">Coming Soon</span> : null}
+          {requestOnly ? <span className="rounded-md bg-amber-300/15 px-3 py-1 text-sm font-bold text-amber-100">Request before printing</span> : null}
+          {!requestOnly && !product.etsy_url ? <span className="rounded-md bg-zinc-800 px-3 py-1 text-sm font-bold">Coming Soon</span> : null}
           {hasCustomization ? (
             <span className="rounded-md bg-amber-300/10 px-3 py-1 text-sm font-bold text-amber-200">
               Custom options available
@@ -106,10 +110,12 @@ export default async function ProductDetailPage({ params }: Props) {
         <div className="mt-6 rounded-lg border border-amber-300/20 bg-amber-300/[0.06] p-5">
           <div className="flex items-center gap-2 font-bold text-zinc-50">
             <ShieldCheck className="text-amber-200" size={19} />
-            Checkout happens on Etsy
+            {requestOnly ? "Request this print before checkout" : "Checkout happens on Etsy"}
           </div>
           <p className="mt-2 text-sm leading-6 text-zinc-300">
-            {isDigital
+            {requestOnly
+              ? "This model needs a quick printability and license review before production. Submit a request with your material, color, quantity, and shipping details; we will quote it and send a custom Etsy checkout link."
+              : isDigital
               ? "After purchase, Etsy provides the download files through your Etsy account or email receipt."
               : "Use Etsy for secure checkout, order messages, shipping updates, and shop support."}
           </p>
@@ -152,14 +158,23 @@ export default async function ProductDetailPage({ params }: Props) {
         ) : null}
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <a
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-amber-300 px-5 text-sm font-bold text-zinc-950 transition hover:bg-amber-200"
-            href={product.etsy_url || "#"}
-            rel="noreferrer"
-            target={product.etsy_url ? "_blank" : undefined}
-          >
-            {product.etsy_url ? "Buy on Etsy" : "Listing Coming Soon"} <ArrowUpRight size={17} />
-          </a>
+          {requestOnly ? (
+            <Link
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-amber-300 px-5 text-sm font-bold text-zinc-950 transition hover:bg-amber-200"
+              href={requestHref}
+            >
+              Request this print <ArrowUpRight size={17} />
+            </Link>
+          ) : (
+            <a
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-amber-300 px-5 text-sm font-bold text-zinc-950 transition hover:bg-amber-200"
+              href={product.etsy_url || "#"}
+              rel="noreferrer"
+              target={product.etsy_url ? "_blank" : undefined}
+            >
+              {product.etsy_url ? "Buy on Etsy" : "Listing Coming Soon"} <ArrowUpRight size={17} />
+            </a>
+          )}
           <Link
             className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/15 px-5 text-sm font-bold text-zinc-50"
             href={`/suggest?similar=${product.slug}`}

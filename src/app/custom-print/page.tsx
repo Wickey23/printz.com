@@ -9,7 +9,17 @@ export const metadata = {
   description: "Find or upload 3D model files, request a print, and pay before production through PRINTZ By Khan.",
 };
 
-export default async function CustomPrintPage() {
+type Props = {
+  searchParams: Promise<{
+    model_source_platform?: string;
+    model_source_url?: string;
+    notes?: string;
+    title?: string;
+  }>;
+};
+
+export default async function CustomPrintPage({ searchParams }: Props) {
+  const params = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -43,6 +53,10 @@ export default async function CustomPrintPage() {
         <CustomPrintPortal
           defaultShippingAddress={defaultShippingAddress}
           defaultShippingName={displayName}
+          initialModelSourcePlatform={cleanParam(params.model_source_platform)}
+          initialModelSourceUrl={cleanParam(params.model_source_url)}
+          initialNotes={cleanParam(params.notes)}
+          initialTitle={cleanParam(params.title)}
           printableModels={printableModels}
           requests={requests}
           signedIn={Boolean(user)}
@@ -51,6 +65,10 @@ export default async function CustomPrintPage() {
       </div>
     </section>
   );
+}
+
+function cleanParam(value?: string) {
+  return typeof value === "string" ? value.slice(0, 2000) : "";
 }
 
 function Step({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {

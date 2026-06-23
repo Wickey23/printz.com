@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Download, Package, Search, Sparkles } from "lucide-react";
 import { categories } from "@/lib/config";
+import { isRequestOnlyProduct } from "@/lib/product-flags";
 import type { Product, ProductMedia } from "@/lib/types";
 import { ProductCard } from "@/components/product-card";
 
@@ -24,7 +25,10 @@ export function ProductBrowser({
     const result = products.filter((product) => {
       const matchesCategory = category === "All" || product.category === category;
       const isDigital = product.category === "Digital Products" || product.tags?.some((tag) => tag.toLowerCase().includes("digital"));
-      const matchesKind = kind === "All" || (kind === "Digital" ? isDigital : !isDigital);
+      const requestOnly = isRequestOnlyProduct(product);
+      const matchesKind =
+        kind === "All" ||
+        (kind === "Digital" ? isDigital : kind === "Requestable" ? requestOnly : !isDigital && !requestOnly);
       const matchesQuery =
         !normalizedQuery ||
         [product.name, product.short_description, product.category, product.tags?.join(" ")]
@@ -64,6 +68,7 @@ export function ProductBrowser({
           <option>All</option>
           <option>Digital</option>
           <option>Physical</option>
+          <option>Requestable</option>
         </select>
         <select
           className="h-12 rounded-md border border-white/10 bg-zinc-950 px-4 text-sm text-zinc-50 outline-none focus:border-amber-300"
@@ -89,7 +94,7 @@ export function ProductBrowser({
       <div className="grid gap-3 md:grid-cols-3">
         <Explainer icon={<Download size={18} />} title="Digital" text="Instant downloads are delivered through Etsy after checkout." />
         <Explainer icon={<Package size={18} />} title="3D printed" text="Physical products are made, packed, and shipped after purchase." />
-        <Explainer icon={<Sparkles size={18} />} title="Custom" text="Need a different color, size, or idea? Send a request before ordering." />
+        <Explainer icon={<Sparkles size={18} />} title="Requestable" text="Some source-model products need review and a custom Etsy checkout before printing." />
       </div>
       {filtered.length ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
