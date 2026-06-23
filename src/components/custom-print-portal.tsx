@@ -1,0 +1,703 @@
+"use client";
+
+import { useActionState, useMemo, useState } from "react";
+import type React from "react";
+import { Calculator, Eye, EyeOff, FileArchive, ImageIcon, ImagePlus, Loader2, LogIn, Upload, Video } from "lucide-react";
+import {
+  createCustomPrintRequest,
+  signInCustomer,
+  signUpCustomer,
+  type ActionState,
+  type CustomPrintRequestState,
+} from "@/app/actions";
+import { ModelPreview } from "@/components/model-preview";
+import type { CustomPrintRequest, PrintStockOption } from "@/lib/types";
+
+const authState: ActionState = { ok: false, message: "" };
+const requestState: CustomPrintRequestState = { ok: false, message: "" };
+
+type UploadedFile = {
+  path: string;
+  name: string;
+  kind: "model" | "reference";
+  size: number;
+  type: string;
+  previewUrl?: string;
+};
+
+const modelAccept =
+  ".stl,.3mf,.obj,.step,.stp,.ply,.amf,.gcode,.scad,.blend,.fbx,.dae,.wrl,.x3d,.glb,.gltf,.iges,.igs,.zip,.rar,.7z,model/*,application/zip,application/x-zip-compressed";
+
+export function CustomPrintPortal({
+  defaultShippingAddress,
+  defaultShippingName,
+  signedIn,
+  requests,
+  stockOptions,
+}: {
+  defaultShippingAddress?: string;
+  defaultShippingName?: string;
+  signedIn: boolean;
+  requests: CustomPrintRequest[];
+  stockOptions: PrintStockOption[];
+}) {
+  if (!signedIn) return <CustomerAuthPanel />;
+
+  return (
+    <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+      <CustomPrintRequestForm defaultShippingAddress={defaultShippingAddress} defaultShippingName={defaultShippingName} stockOptions={stockOptions} />
+      <PrintRequestHistory requests={requests} />
+    </div>
+  );
+}
+
+function CustomerAuthPanel() {
+  const [signInState, signInAction, signInPending] = useActionState(signInCustomer, authState);
+  const [signUpState, signUpAction, signUpPending] = useActionState(signUpCustomer, authState);
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <form action={signInAction} className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
+        <h2 className="text-2xl font-black text-zinc-50">Sign in</h2>
+        <AuthFields pending={signInPending} submitLabel="Sign in" />
+        {signInState.message ? <FormMessage state={signInState} /> : null}
+      </form>
+      <form action={signUpAction} className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
+        <h2 className="text-2xl font-black text-zinc-50">Create account</h2>
+        <AuthFields pending={signUpPending} submitLabel="Create account" />
+        {signUpState.message ? <FormMessage state={signUpState} /> : null}
+      </form>
+    </div>
+  );
+}
+
+function AuthFields({ pending, submitLabel }: { pending: boolean; submitLabel: string }) {
+  return (
+    <div className="mt-5 grid gap-4">
+      <Field label="Email" name="email" type="email" />
+      <PasswordField label="Password" name="password" />
+      <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950 disabled:opacity-60" disabled={pending}>
+        <LogIn size={17} />
+        {pending ? "Working..." : submitLabel}
+      </button>
+    </div>
+  );
+}
+
+function PasswordField({ label, name, placeholder }: { label: string; name: string; placeholder?: string }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label className="grid min-w-0 gap-2 text-sm font-bold text-zinc-200">
+      {label}
+      <span className="relative">
+        <input
+          className="h-11 w-full rounded-md border border-white/10 bg-zinc-950 px-3 pr-11 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
+          name={name}
+          placeholder={placeholder}
+          type={visible ? "text" : "password"}
+        />
+        <button
+          aria-label={visible ? "Hide password" : "Show password"}
+          className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
+          onClick={() => setVisible((value) => !value)}
+          type="button"
+        >
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </span>
+    </label>
+  );
+}
+
+function CustomPrintRequestForm({
+  defaultShippingAddress,
+  defaultShippingName,
+  stockOptions,
+}: {
+  defaultShippingAddress?: string;
+  defaultShippingName?: string;
+  stockOptions: PrintStockOption[];
+}) {
+  const [state, action, pending] = useActionState(createCustomPrintRequest, requestState);
+  const [uploads, setUploads] = useState<UploadedFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [grams, setGrams] = useState("");
+  const [hours, setHours] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [estimateNote, setEstimateNote] = useState("");
+  const parsedDefaultAddress = useMemo(() => parseAddress(defaultShippingAddress || ""), [defaultShippingAddress]);
+  const [shippingStreet, setShippingStreet] = useState(parsedDefaultAddress.street);
+  const [shippingUnit, setShippingUnit] = useState(parsedDefaultAddress.unit);
+  const [shippingCity, setShippingCity] = useState(parsedDefaultAddress.city);
+  const [shippingState, setShippingState] = useState(parsedDefaultAddress.state);
+  const [shippingZip, setShippingZip] = useState(parsedDefaultAddress.zip);
+  const materialOptions = stockOptions.filter((option) => option.option_type === "material");
+  const colorOptions = stockOptions.filter((option) => option.option_type === "color");
+  const finishOptions = stockOptions.filter((option) => option.option_type === "finish");
+  const [selectedMaterial, setSelectedMaterial] = useState(materialOptions[0]?.value || "PLA");
+  const [selectedColor, setSelectedColor] = useState(colorOptions[0]?.value || "Black");
+  const [selectedFinish, setSelectedFinish] = useState(finishOptions[0]?.value || "Standard");
+  const selectedColorOption = colorOptions.find((option) => option.value === selectedColor || option.name === selectedColor);
+  const selectedColorHex = selectedColorOption?.hex_color || colorToHex(selectedColor);
+
+  const estimate = useMemo(() => {
+    const gramValue = Number(grams);
+    const hourValue = Number(hours);
+    const quantityValue = Math.max(1, Number(quantity) || 1);
+    if (!gramValue || !hourValue) return null;
+    const cents = Math.max(999, (500 + Math.ceil(gramValue * 14) + Math.ceil(hourValue * 250)) * quantityValue + 599);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+  }, [grams, hours, quantity]);
+
+  async function uploadFiles(files: FileList | null, kind: UploadedFile["kind"]) {
+    if (!files?.length) return;
+    setUploading(true);
+    setUploadMessage("");
+
+    try {
+      const uploaded: UploadedFile[] = [];
+      for (const file of Array.from(files)) {
+        const localPreviewUrl = URL.createObjectURL(file);
+        if (kind === "model") {
+          const stlEstimate = await estimateFromStl(file);
+          if (stlEstimate) {
+            setGrams(String(stlEstimate.grams));
+            setHours(String(stlEstimate.hours));
+            setEstimateNote(`Estimated from ${file.name}. Review before quoting.`);
+          }
+        }
+
+        const uploadForm = new FormData();
+        uploadForm.set("file", file);
+        uploadForm.set("kind", kind);
+        const response = await fetch("/api/print-upload", {
+          method: "POST",
+          body: uploadForm,
+        });
+        const result = (await response.json()) as {
+          ok?: boolean;
+          message?: string;
+          path?: string;
+          name?: string;
+          size?: number;
+          type?: string;
+        };
+        if (!response.ok || !result.ok || !result.path) throw new Error(result.message || "Upload failed.");
+        uploaded.push({
+          path: result.path,
+          name: result.name || file.name,
+          kind,
+          size: result.size || file.size,
+          type: result.type || file.type,
+          previewUrl: localPreviewUrl,
+        });
+      }
+
+      setUploads((current) => [...current, ...uploaded]);
+      setUploadMessage(`Uploaded ${uploaded.length} file${uploaded.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const modelUploads = uploads.filter((upload) => upload.kind === "model");
+  const referenceUploads = uploads.filter((upload) => upload.kind === "reference");
+  const shippingAddress = [shippingStreet, shippingUnit, `${shippingCity}, ${shippingState} ${shippingZip}`]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("\n");
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    if (!modelUploads.length) {
+      event.preventDefault();
+      setUploadMessage("Upload at least one 3D model file before submitting.");
+      form.querySelector<HTMLElement>("[data-upload-section]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    if (!form.checkValidity()) {
+      event.preventDefault();
+      const invalid = form.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(":invalid");
+      invalid?.scrollIntoView({ behavior: "smooth", block: "center" });
+      invalid?.focus({ preventScroll: true });
+      form.reportValidity();
+    }
+  }
+
+  return (
+    <form action={action} className="rounded-lg border border-white/10 bg-zinc-900/70 p-5" onSubmit={handleSubmit}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-amber-200">Custom printing</p>
+          <h2 className="mt-2 text-3xl font-black text-zinc-50">Upload files for us to print</h2>
+          <p className="mt-3 text-sm leading-6 text-zinc-400">
+            Upload STL, 3MF, OBJ, STEP, or ZIP files. We review the model, create a custom Etsy checkout listing, then send your Etsy payment link.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
+        <div className="grid gap-4">
+          <Field label="Project title" name="title" placeholder="Desk name plate, replacement bracket, classroom organizer" required />
+          <Textarea label="Print notes" name="notes" placeholder="Tell us what the part is for, strength needs, orientation concerns, scale, or deadlines." />
+
+          <div className="grid gap-3 rounded-lg border border-white/10 bg-zinc-950 p-4" data-upload-section>
+            <div className="flex flex-wrap gap-3">
+              <UploadButton
+                accept={modelAccept}
+                icon={<FileArchive size={16} />}
+                label={uploading ? "Uploading..." : "Upload 3D files"}
+                multiple
+                onChange={(files) => void uploadFiles(files, "model")}
+              />
+              <UploadButton
+                accept="image/*,video/*,.gif"
+                icon={<ImagePlus size={16} />}
+                label={uploading ? "Uploading..." : "Add images/video"}
+                multiple
+                onChange={(files) => void uploadFiles(files, "reference")}
+              />
+            </div>
+            {uploadMessage ? <p className="text-sm font-semibold text-amber-200">{uploadMessage}</p> : null}
+            <UploadList title="3D files" uploads={modelUploads} />
+            <UploadList title="Reference media" uploads={referenceUploads} />
+            {modelUploads.map((upload) => (
+              <input key={upload.path} name="file_urls" type="hidden" value={upload.path} />
+            ))}
+            {modelUploads.map((upload) => (
+              <input key={`${upload.path}-name`} name="file_names" type="hidden" value={upload.name} />
+            ))}
+            {referenceUploads.map((upload) => (
+              <input key={upload.path} name="image_urls" type="hidden" value={upload.path} />
+            ))}
+          </div>
+
+          <div className="grid gap-4">
+            <input name="material" type="hidden" value={selectedMaterial} />
+            <input name="color" type="hidden" value={selectedColor} />
+            <input name="finish" type="hidden" value={selectedFinish} />
+            <OptionButtons label="Material" options={materialOptions} selected={selectedMaterial} onSelect={setSelectedMaterial} />
+            <ColorSwatches options={colorOptions} selected={selectedColor} onSelect={setSelectedColor} />
+            <OptionButtons label="Finish" options={finishOptions} selected={selectedFinish} onSelect={setSelectedFinish} />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Infill %" name="infill_percent" placeholder="15" type="number" />
+            <Field label="Quantity" name="quantity" onChange={setQuantity} placeholder="1" type="number" value={quantity} />
+            <Field label="Estimated grams" name="estimated_grams" onChange={setGrams} placeholder="Auto for STL or from slicer" type="number" value={grams} />
+            <Field label="Estimated print hours" name="estimated_hours" onChange={setHours} placeholder="Auto for STL or from slicer" type="number" value={hours} />
+          </div>
+
+        <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-4">
+          <p className="inline-flex items-center gap-2 text-sm font-black text-amber-100">
+            <Calculator size={16} />
+            {estimate ? `Internal estimate: ${estimate}` : "Upload now, Etsy checkout after review"}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-zinc-300">
+            This estimate helps us quote faster. Final payment happens through a custom Etsy listing after we confirm the file can be printed.
+          </p>
+          {estimateNote ? <p className="mt-2 text-sm font-semibold text-amber-100">{estimateNote}</p> : null}
+        </div>
+
+          <div className="grid gap-4 rounded-lg border border-white/10 bg-zinc-950 p-4">
+            <p className="text-sm font-black text-zinc-100">Shipping address</p>
+            <Field defaultValue={defaultShippingName || ""} label="Full name" name="shipping_name" required />
+            <input name="shipping_address" type="hidden" value={shippingAddress} />
+            <Field label="Street address" name="shipping_street" onChange={setShippingStreet} placeholder="123 Main St" required value={shippingStreet} />
+            <Field label="Apartment, suite, unit" name="shipping_unit" onChange={setShippingUnit} placeholder="Apt 4B" value={shippingUnit} />
+            <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(80px,120px)_minmax(120px,160px)]">
+              <Field label="City" name="shipping_city" onChange={setShippingCity} placeholder="City" required value={shippingCity} />
+              <Field label="State" maxLength={2} name="shipping_state" onChange={(value) => setShippingState(value.toUpperCase())} placeholder="NY" required value={shippingState} />
+              <Field label="ZIP" name="shipping_zip" onChange={setShippingZip} pattern="[0-9]{5}(-[0-9]{4})?" placeholder="10001" required value={shippingZip} />
+            </div>
+          </div>
+
+          <button className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-amber-300 px-5 text-sm font-black text-zinc-950 disabled:opacity-60" disabled={pending || uploading}>
+            {pending ? <Loader2 className="animate-spin" size={17} /> : <Upload size={17} />}
+            {pending ? "Submitting..." : "Submit print request"}
+          </button>
+          {state.message ? <FormMessage state={state} /> : null}
+        </div>
+
+        <UploadPreview uploads={uploads} selectedColor={selectedColor} selectedColorHex={selectedColorHex} selectedFinish={selectedFinish} selectedMaterial={selectedMaterial} />
+      </div>
+    </form>
+  );
+}
+
+function PrintRequestHistory({ requests }: { requests: CustomPrintRequest[] }) {
+  return (
+    <aside className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
+      <h2 className="text-2xl font-black text-zinc-50">Your requests</h2>
+      <div className="mt-5 grid gap-3">
+        {requests.map((request) => (
+          <article className="rounded-md border border-white/10 bg-zinc-950 p-4" key={request.id}>
+            <p className="font-black text-zinc-50">{request.title}</p>
+            <p className="mt-1 text-sm text-zinc-400">{request.file_names.length} file(s) uploaded</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+              <span className="rounded-md bg-amber-300/15 px-2 py-1 text-amber-100">{request.payment_status.replaceAll("_", " ")}</span>
+              <span className="rounded-md bg-white/10 px-2 py-1 text-zinc-200">{request.production_status.replaceAll("_", " ")}</span>
+            </div>
+            {request.quoted_cents ? (
+              <p className="mt-3 text-sm font-bold text-zinc-100">Quote: ${(request.quoted_cents / 100).toFixed(2)}</p>
+            ) : null}
+            {request.etsy_checkout_url ? (
+              <a
+                className="mt-4 inline-flex h-10 items-center rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950"
+                href={request.etsy_checkout_url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Pay on Etsy
+              </a>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-zinc-400">We will add your Etsy payment link after reviewing the files.</p>
+            )}
+          </article>
+        ))}
+        {!requests.length ? <p className="text-sm leading-6 text-zinc-400">No custom print requests yet.</p> : null}
+      </div>
+    </aside>
+  );
+}
+
+function OptionButtons({
+  label,
+  onSelect,
+  options,
+  selected,
+}: {
+  label: string;
+  onSelect: (value: string) => void;
+  options: PrintStockOption[];
+  selected: string;
+}) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-bold text-zinc-200">{label}</legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <button
+            className={
+              selected === option.value
+                ? "h-10 rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950"
+                : "h-10 rounded-md border border-white/10 px-4 text-sm font-bold text-zinc-200 transition hover:border-amber-300/40"
+            }
+            key={option.id}
+            onClick={() => onSelect(option.value)}
+            type="button"
+          >
+            {option.name}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function ColorSwatches({
+  onSelect,
+  options,
+  selected,
+}: {
+  onSelect: (value: string) => void;
+  options: PrintStockOption[];
+  selected: string;
+}) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-bold text-zinc-200">Color</legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <button
+            aria-label={`Select ${option.name}`}
+            className={
+              selected === option.value
+                ? "grid h-12 min-w-24 grid-cols-[28px_1fr] items-center gap-2 rounded-md bg-amber-300 px-2 text-left text-sm font-black text-zinc-950"
+                : "grid h-12 min-w-24 grid-cols-[28px_1fr] items-center gap-2 rounded-md border border-white/10 px-2 text-left text-sm font-bold text-zinc-200 transition hover:border-amber-300/40"
+            }
+            key={option.id}
+            onClick={() => onSelect(option.value)}
+            type="button"
+          >
+            <span className="size-7 rounded border border-black/20" style={{ backgroundColor: option.hex_color || option.value }} />
+            <span>{option.name}</span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function UploadPreview({
+  selectedColor,
+  selectedColorHex,
+  selectedFinish,
+  selectedMaterial,
+  uploads,
+}: {
+  selectedColor: string;
+  selectedColorHex: string;
+  selectedFinish: string;
+  selectedMaterial: string;
+  uploads: UploadedFile[];
+}) {
+  return (
+    <aside className="h-fit rounded-lg border border-white/10 bg-zinc-950 p-4 xl:sticky xl:top-24">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-200">Preview</p>
+      <div className="mt-3 rounded-md border border-white/10 bg-zinc-900 p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="size-8 shrink-0 rounded-md border border-white/15" style={{ backgroundColor: selectedColorHex }} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-zinc-50">{selectedMaterial}</p>
+            <p className="mt-1 truncate text-sm text-zinc-400">{selectedColor} / {selectedFinish}</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3">
+        {uploads.map((upload) => (
+          <article className="overflow-hidden rounded-md border border-white/10 bg-zinc-900" key={upload.path}>
+            {upload.previewUrl && upload.type.startsWith("image/") ? (
+              <img alt={upload.name} className="aspect-video w-full object-cover" src={upload.previewUrl} />
+            ) : upload.previewUrl && upload.type.startsWith("video/") ? (
+              <video className="aspect-video w-full object-cover" controls src={upload.previewUrl} />
+            ) : upload.kind === "model" && upload.previewUrl ? (
+              <ModelPreview fileName={upload.name} materialColor={selectedColorHex} url={upload.previewUrl} />
+            ) : (
+              <div className="grid aspect-video place-items-center bg-zinc-950 text-zinc-400">
+                {upload.kind === "reference" ? <ImageIcon size={28} /> : <FileArchive size={28} />}
+              </div>
+            )}
+            <div className="p-3">
+              <div className="flex items-start gap-2">
+                {upload.type.startsWith("video/") ? <Video className="mt-0.5 shrink-0 text-amber-200" size={15} /> : <FileArchive className="mt-0.5 shrink-0 text-amber-200" size={15} />}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-zinc-100">{upload.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{upload.kind === "model" ? fileExtension(upload.name).toUpperCase() : upload.type || "reference"} / {formatBytes(upload.size)}</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        ))}
+        {!uploads.length ? <p className="rounded-md border border-dashed border-white/10 p-4 text-sm leading-6 text-zinc-500">Uploaded files will preview here before you submit the request.</p> : null}
+      </div>
+    </aside>
+  );
+}
+
+function UploadButton({
+  accept,
+  icon,
+  label,
+  multiple,
+  onChange,
+}: {
+  accept: string;
+  icon: React.ReactNode;
+  label: string;
+  multiple?: boolean;
+  onChange: (files: FileList | null) => void;
+}) {
+  return (
+    <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-white/10 px-3 text-xs font-bold text-zinc-200 transition hover:border-amber-300/40">
+      {icon}
+      {label}
+      <input
+        accept={accept}
+        className="sr-only"
+        multiple={multiple}
+        onChange={(event) => onChange(event.target.files)}
+        type="file"
+      />
+    </label>
+  );
+}
+
+function fileExtension(name: string) {
+  return name.split(".").pop() || "file";
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function colorToHex(value: string) {
+  const key = value.toLowerCase().trim();
+  const colors: Record<string, string> = {
+    black: "#050505",
+    white: "#f8fafc",
+    gray: "#71717a",
+    grey: "#71717a",
+    red: "#ef4444",
+    blue: "#3b82f6",
+    green: "#22c55e",
+    yellow: "#facc15",
+    gold: "#d4a017",
+    silver: "#c0c0c0",
+    orange: "#f97316",
+    purple: "#a855f7",
+    pink: "#ec4899",
+  };
+  return colors[key] || (value.startsWith("#") ? value : "#facc15");
+}
+
+async function estimateFromStl(file: File) {
+  if (!file.name.toLowerCase().endsWith(".stl")) return null;
+
+  const buffer = await file.arrayBuffer();
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 84) return null;
+
+  const triangleCount = view.getUint32(80, true);
+  const expectedLength = 84 + triangleCount * 50;
+  if (expectedLength !== buffer.byteLength || triangleCount <= 0 || triangleCount > 2_000_000) return null;
+
+  let volume = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+
+  for (let i = 0; i < triangleCount; i += 1) {
+    const offset = 84 + i * 50 + 12;
+    const a = point(view, offset);
+    const b = point(view, offset + 12);
+    const c = point(view, offset + 24);
+    volume += signedTetraVolume(a, b, c);
+
+    for (const p of [a, b, c]) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      minZ = Math.min(minZ, p.z);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+      maxZ = Math.max(maxZ, p.z);
+    }
+  }
+
+  const volumeMm3 = Math.abs(volume);
+  const bboxMm3 = Math.max(0, maxX - minX) * Math.max(0, maxY - minY) * Math.max(0, maxZ - minZ);
+  if (!Number.isFinite(volumeMm3) || volumeMm3 <= 0) return null;
+
+  const plasticDensityGPerCm3 = 1.24;
+  const grams = Math.max(1, Math.round((volumeMm3 / 1000) * plasticDensityGPerCm3 * 1.12));
+  const hours = Math.max(0.5, Math.round((grams / 14 + bboxMm3 / 350000) * 10) / 10);
+
+  return { grams, hours };
+}
+
+function point(view: DataView, offset: number) {
+  return {
+    x: view.getFloat32(offset, true),
+    y: view.getFloat32(offset + 4, true),
+    z: view.getFloat32(offset + 8, true),
+  };
+}
+
+function signedTetraVolume(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }, c: { x: number; y: number; z: number }) {
+  return (
+    a.x * b.y * c.z +
+    b.x * c.y * a.z +
+    c.x * a.y * b.z -
+    a.x * c.y * b.z -
+    b.x * a.y * c.z -
+    c.x * b.y * a.z
+  ) / 6;
+}
+
+function UploadList({ title, uploads }: { title: string; uploads: UploadedFile[] }) {
+  if (!uploads.length) return null;
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">{title}</p>
+      <ul className="mt-2 grid gap-1 text-sm text-zinc-300">
+        {uploads.map((upload) => (
+          <li className="truncate" key={upload.path}>{upload.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Field({
+  defaultValue,
+  label,
+  maxLength,
+  name,
+  onChange,
+  pattern,
+  placeholder,
+  required = false,
+  type = "text",
+  value,
+}: {
+  defaultValue?: string;
+  label: string;
+  maxLength?: number;
+  name: string;
+  onChange?: (value: string) => void;
+  pattern?: string;
+  placeholder?: string;
+  required?: boolean;
+  type?: string;
+  value?: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-bold text-zinc-200">
+      {label}
+      <input
+        className="h-11 w-full min-w-0 rounded-md border border-white/10 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
+        defaultValue={value === undefined ? defaultValue : undefined}
+        maxLength={maxLength}
+        name={name}
+        onChange={(event) => onChange?.(event.target.value)}
+        pattern={pattern}
+        placeholder={placeholder}
+        required={required}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function Textarea({ defaultValue, label, name, placeholder }: { defaultValue?: string; label: string; name: string; placeholder?: string }) {
+  return (
+    <label className="grid min-w-0 gap-2 text-sm font-bold text-zinc-200">
+      {label}
+      <textarea
+        className="min-h-28 w-full min-w-0 rounded-md border border-white/10 bg-zinc-950 px-3 py-3 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
+        defaultValue={defaultValue}
+        name={name}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function FormMessage({ state }: { state: ActionState }) {
+  return <p className={state.ok ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-200"}>{state.message}</p>;
+}
+
+function parseAddress(address: string) {
+  const lines = address.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const cityStateZip = lines.at(-1) || "";
+  const match = cityStateZip.match(/^(.+?),\s*([A-Za-z]{2})\s+([0-9]{5}(?:-[0-9]{4})?)$/);
+
+  return {
+    street: lines[0] || "",
+    unit: match ? lines.slice(1, -1).join(" ") : lines.slice(1).join(" "),
+    city: match?.[1] || "",
+    state: match?.[2]?.toUpperCase() || "",
+    zip: match?.[3] || "",
+  };
+}

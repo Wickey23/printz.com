@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: #fcd34d;
+  color: #09090b;
+}
+
+.surface-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.hero-wheel {
+  scrollbar-color: #fcd34d rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.hero-wheel::-webkit-scrollbar {
+  height: 8px;
+}
+
+.hero-wheel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.hero-wheel::-webkit-scrollbar-thumb {
+  background: #fcd34d;
+  border-radius: 999px;
+}

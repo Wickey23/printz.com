@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/sync-etsy",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
