@@ -1,7 +1,7 @@
 import { Box, CreditCard, Truck } from "lucide-react";
 import type React from "react";
 import { CustomPrintPortal } from "@/components/custom-print-portal";
-import { getPrintRequestsForUser, getPrintStockOptions } from "@/lib/data";
+import { getPrintableModels, getPrintRequestsForUser, getPrintStockOptions } from "@/lib/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -14,7 +14,8 @@ export default async function CustomPrintPage() {
   const {
     data: { user },
   } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
-  const [requests, stockOptions] = await Promise.all([
+  const [printableModels, requests, stockOptions] = await Promise.all([
+    getPrintableModels(),
     user ? getPrintRequestsForUser() : [],
     getPrintStockOptions({ activeOnly: true }),
   ]);
@@ -42,6 +43,7 @@ export default async function CustomPrintPage() {
         <CustomPrintPortal
           defaultShippingAddress={defaultShippingAddress}
           defaultShippingName={displayName}
+          printableModels={printableModels}
           requests={requests}
           signedIn={Boolean(user)}
           stockOptions={stockOptions}

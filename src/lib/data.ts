@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import { mockMedia, mockProducts, mockSuggestions } from "@/lib/mock-data";
-import type { CustomPrintRequest, EtsyTrendReport, PrintStockOption, Product, ProductMedia, Suggestion } from "@/lib/types";
+import type { CustomPrintRequest, EtsyTrendReport, PrintableModel, PrintStockOption, Product, ProductMedia, Suggestion } from "@/lib/types";
 
 export const getProducts = cache(async () => {
   const supabase = createSupabaseAdminClient();
@@ -175,6 +175,72 @@ export const getPrintStockOptions = cache(async ({ activeOnly = false }: { activ
   if (error) return defaultPrintStockOptions(activeOnly);
   return (data || []) as PrintStockOption[];
 });
+
+export const getPrintableModels = cache(async () => {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return fallbackPrintableModels();
+
+  const { data, error } = await supabase
+    .from("printable_models")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false })
+    .limit(60);
+
+  if (error) return fallbackPrintableModels();
+  return ((data || []) as PrintableModel[]).length ? (data || []) as PrintableModel[] : fallbackPrintableModels();
+});
+
+function fallbackPrintableModels(): PrintableModel[] {
+  const now = new Date().toISOString();
+  return [
+    {
+      title: "Modern ribbed desk organizer",
+      source_platform: "MakerWorld",
+      source_url: "https://makerworld.com/en/models/783651-modern-desk-organizer-low-waste-no-ams-needed",
+      category: "Desk organization",
+      tags: ["desk", "organizer", "office", "teacher"],
+      license_summary: "Source model must be checked before commercial printing.",
+      print_notes: "Good starter request for office, teacher desk, and study setups.",
+    },
+    {
+      title: "Parametric organizer box",
+      source_platform: "MakerWorld",
+      source_url: "https://makerworld.com/en/models/1660223-parametric-desk-organizer-fully-customizable",
+      category: "Storage",
+      tags: ["parametric", "box", "storage", "organizer"],
+      license_summary: "Confirm source license and customer-selected dimensions before quote.",
+      print_notes: "Useful for custom sizes and classroom supply storage.",
+    },
+    {
+      title: "Hydro flask cup holder adapter",
+      source_platform: "Printables",
+      source_url: "https://www.printables.com/model/120213-hydro-flask-cup-holder-adapter",
+      category: "Adapters",
+      tags: ["adapter", "cup holder", "replacement", "utility"],
+      license_summary: "Confirm source license before printing for resale or third-party customers.",
+      print_notes: "Ask customer for bottle and cup-holder measurements.",
+    },
+    {
+      title: "Customizable name desk organizer",
+      source_platform: "MakerWorld",
+      source_url: "https://makerworld.com/en/models/2600234-customizable-name-desk-organizer",
+      category: "Personalized gifts",
+      tags: ["name", "teacher gift", "desk", "personalized"],
+      license_summary: "Personalization and source license must be reviewed before quote.",
+      print_notes: "Strong request candidate for teacher gifts and office name plates.",
+    },
+  ].map((model, index) => ({
+    id: `fallback-printable-${index + 1}`,
+    image_url: null,
+    active: true,
+    sort_order: index,
+    created_at: now,
+    updated_at: now,
+    ...model,
+  }));
+}
 
 function defaultPrintStockOptions(activeOnly: boolean) {
   const now = new Date().toISOString();

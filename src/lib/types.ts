@@ -125,3 +125,19 @@ export type PrintStockOption = {
   created_at: string;
   updated_at: string;
 };
+
+export type PrintableModel = {
+  id: string;
+  title: string;
+  source_platform: string;
+  source_url: string;
+  image_url: string | null;
+  category: string | null;
+  tags: string[] | null;
+  license_summary: string | null;
+  print_notes: string | null;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};

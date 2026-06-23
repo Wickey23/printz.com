@@ -11,7 +11,7 @@ import {
   type CustomPrintRequestState,
 } from "@/app/actions";
 import { ModelPreview } from "@/components/model-preview";
-import type { CustomPrintRequest, PrintStockOption } from "@/lib/types";
+import type { CustomPrintRequest, PrintableModel, PrintStockOption } from "@/lib/types";
 
 const authState: ActionState = { ok: false, message: "" };
 const requestState: CustomPrintRequestState = { ok: false, message: "" };
@@ -31,20 +31,24 @@ const modelAccept =
 export function CustomPrintPortal({
   defaultShippingAddress,
   defaultShippingName,
+  printableModels,
   signedIn,
   requests,
   stockOptions,
 }: {
   defaultShippingAddress?: string;
   defaultShippingName?: string;
+  printableModels: PrintableModel[];
   signedIn: boolean;
   requests: CustomPrintRequest[];
   stockOptions: PrintStockOption[];
 }) {
+  const [selectedModel, setSelectedModel] = useState<PrintableModel | null>(null);
+
   if (!signedIn) {
     return (
       <div className="grid gap-8">
-        <PublicPrintLookup />
+        <PublicPrintLookup models={printableModels} onSelect={setSelectedModel} selectedModel={selectedModel} />
         <CustomerAuthPanel />
       </div>
     );
@@ -52,29 +56,47 @@ export function CustomPrintPortal({
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-      <CustomPrintRequestForm defaultShippingAddress={defaultShippingAddress} defaultShippingName={defaultShippingName} stockOptions={stockOptions} />
+      <CustomPrintRequestForm
+        defaultShippingAddress={defaultShippingAddress}
+        defaultShippingName={defaultShippingName}
+        models={printableModels}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        stockOptions={stockOptions}
+      />
       <PrintRequestHistory requests={requests} />
     </div>
   );
 }
 
-function PublicPrintLookup() {
+function PublicPrintLookup({
+  models,
+  onSelect,
+  selectedModel,
+}: {
+  models: PrintableModel[];
+  onSelect: (model: PrintableModel | null) => void;
+  selectedModel: PrintableModel | null;
+}) {
   const [modelSourceUrl, setModelSourceUrl] = useState("");
   const [modelSourcePlatform, setModelSourcePlatform] = useState("");
 
   return (
     <div className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
       <PrintLookup
+        models={models}
         modelSourcePlatform={modelSourcePlatform}
         modelSourceUrl={modelSourceUrl}
+        onModelSelect={onSelect}
         onSelect={(url, platform) => {
           setModelSourceUrl(url);
           setModelSourcePlatform(platform);
         }}
+        selectedModel={selectedModel}
       />
-      {modelSourceUrl ? (
+      {selectedModel || modelSourceUrl ? (
         <p className="mt-3 text-sm font-semibold text-amber-100">
-          Sign in or create an account below to request this {modelSourcePlatform || "model"} print.
+          Sign in or create an account below to request this {(selectedModel?.source_platform || modelSourcePlatform || "model")} print.
         </p>
       ) : null}
     </div>
@@ -142,16 +164,24 @@ function PasswordField({ label, name, placeholder }: { label: string; name: stri
 function CustomPrintRequestForm({
   defaultShippingAddress,
   defaultShippingName,
+  models,
+  selectedModel,
+  setSelectedModel,
   stockOptions,
 }: {
   defaultShippingAddress?: string;
   defaultShippingName?: string;
+  models: PrintableModel[];
+  selectedModel: PrintableModel | null;
+  setSelectedModel: (model: PrintableModel | null) => void;
   stockOptions: PrintStockOption[];
 }) {
   const [state, action, pending] = useActionState(createCustomPrintRequest, requestState);
   const [uploads, setUploads] = useState<UploadedFile[]>([]);
   const [modelSourceUrl, setModelSourceUrl] = useState("");
   const [modelSourcePlatform, setModelSourcePlatform] = useState("");
+  const [projectTitle, setProjectTitle] = useState("");
+  const [printNotes, setPrintNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [grams, setGrams] = useState("");
@@ -172,6 +202,19 @@ function CustomPrintRequestForm({
   const [selectedFinish, setSelectedFinish] = useState(finishOptions[0]?.value || "Standard");
   const selectedColorOption = colorOptions.find((option) => option.value === selectedColor || option.name === selectedColor);
   const selectedColorHex = selectedColorOption?.hex_color || colorToHex(selectedColor);
+
+  function chooseCatalogModel(model: PrintableModel | null) {
+    setSelectedModel(model);
+    if (!model) return;
+    setModelSourceUrl(model.source_url);
+    setModelSourcePlatform(model.source_platform);
+    setProjectTitle(model.title);
+    setPrintNotes(
+      [model.print_notes, model.license_summary ? `License note: ${model.license_summary}` : ""]
+        .filter(Boolean)
+        .join("\n\n"),
+    );
+  }
 
   const estimate = useMemo(() => {
     const gramValue = Number(grams);
@@ -274,16 +317,19 @@ function CustomPrintRequestForm({
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_320px]">
         <div className="grid gap-4">
-          <Field label="Project title" name="title" placeholder="Desk name plate, replacement bracket, classroom organizer" required />
-          <Textarea label="Print notes" name="notes" placeholder="Tell us what the part is for, strength needs, orientation concerns, scale, or deadlines." />
+          <Field label="Project title" name="title" onChange={setProjectTitle} placeholder="Desk name plate, replacement bracket, classroom organizer" required value={projectTitle} />
+          <Textarea label="Print notes" name="notes" onChange={setPrintNotes} placeholder="Tell us what the part is for, strength needs, orientation concerns, scale, or deadlines." value={printNotes} />
 
           <PrintLookup
+            models={models}
             modelSourcePlatform={modelSourcePlatform}
             modelSourceUrl={modelSourceUrl}
+            onModelSelect={chooseCatalogModel}
             onSelect={(url, platform) => {
               setModelSourceUrl(url);
               setModelSourcePlatform(platform);
             }}
+            selectedModel={selectedModel}
           />
           <input name="model_source_url" type="hidden" value={modelSourceUrl} />
           <input name="model_source_platform" type="hidden" value={modelSourcePlatform} />
@@ -576,26 +622,57 @@ const printLookupProviders = [
 ] as const;
 
 function PrintLookup({
+  models,
   modelSourcePlatform,
   modelSourceUrl,
+  onModelSelect,
   onSelect,
+  selectedModel,
 }: {
+  models: PrintableModel[];
   modelSourcePlatform: string;
   modelSourceUrl: string;
+  onModelSelect: (model: PrintableModel | null) => void;
   onSelect: (url: string, platform: string) => void;
+  selectedModel: PrintableModel | null;
 }) {
   const [query, setQuery] = useState("");
   const [sourceUrl, setSourceUrl] = useState(modelSourceUrl);
   const [copyMessage, setCopyMessage] = useState("");
   const guessedPlatform = guessProvider(sourceUrl);
+  const visibleModels = useMemo(() => {
+    const cleanQuery = query.trim().toLowerCase();
+    if (!cleanQuery) return models.slice(0, 8);
+    return models
+      .filter((model) => {
+        const haystack = [
+          model.title,
+          model.source_platform,
+          model.category || "",
+          model.license_summary || "",
+          model.print_notes || "",
+          ...(model.tags || []),
+        ].join(" ").toLowerCase();
+        return cleanQuery.split(/\s+/).every((term) => haystack.includes(term));
+      })
+      .slice(0, 8);
+  }, [models, query]);
 
   function saveSource() {
     const cleanUrl = sourceUrl.trim();
     if (!cleanUrl) {
       onSelect("", "");
+      onModelSelect(null);
       return;
     }
+    onModelSelect(null);
     onSelect(cleanUrl, guessedPlatform || "Model source");
+  }
+
+  function selectModel(model: PrintableModel) {
+    onModelSelect(model);
+    onSelect(model.source_url, model.source_platform);
+    setSourceUrl(model.source_url);
   }
 
   return (
@@ -607,19 +684,19 @@ function PrintLookup({
             Find a printable model
           </p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-            Search model libraries, open a result, then paste the model page link here so we can review license, files, and printability.
+            Browse PRINTZ-curated model ideas first, or search outside libraries if you need something else. We review license, files, and printability before quoting.
           </p>
         </div>
-        {modelSourceUrl ? (
+        {selectedModel || modelSourceUrl ? (
           <span className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-300/15 px-2 text-xs font-black text-emerald-200">
             <CheckCircle2 size={14} />
-            {modelSourcePlatform || "Source selected"}
+            {selectedModel?.title || modelSourcePlatform || "Source selected"}
           </span>
         ) : null}
       </div>
 
       <label className="grid gap-2 text-sm font-bold text-zinc-200">
-        Search terms
+        Search PRINTZ model catalog
         <input
           className="h-11 w-full min-w-0 rounded-md border border-white/10 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
           onChange={(event) => setQuery(event.target.value)}
@@ -628,6 +705,49 @@ function PrintLookup({
         />
       </label>
 
+      <div className="grid gap-3 md:grid-cols-2">
+        {visibleModels.map((model) => (
+          <article
+            className={
+              selectedModel?.id === model.id
+                ? "grid gap-3 rounded-md border border-amber-300/60 bg-amber-300/10 p-3"
+                : "grid gap-3 rounded-md border border-white/10 bg-zinc-900 p-3"
+            }
+            key={model.id}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-black text-zinc-50">{model.title}</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-amber-200">{model.source_platform}</p>
+              </div>
+              <button
+                className="shrink-0 rounded-md bg-amber-300 px-3 py-2 text-xs font-black text-zinc-950"
+                onClick={() => selectModel(model)}
+                type="button"
+              >
+                Request
+              </button>
+            </div>
+            {model.category ? <p className="text-sm font-semibold text-zinc-300">{model.category}</p> : null}
+            {model.print_notes ? <p className="text-sm leading-6 text-zinc-400">{model.print_notes}</p> : null}
+            {model.license_summary ? <p className="text-xs leading-5 text-zinc-500">{model.license_summary}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              {(model.tags || []).slice(0, 5).map((tag) => (
+                <span className="rounded-md bg-white/5 px-2 py-1 text-xs font-bold text-zinc-300" key={tag}>{tag}</span>
+              ))}
+            </div>
+            <a className="inline-flex items-center gap-1 text-sm font-bold text-amber-200 underline" href={model.source_url} rel="noreferrer" target="_blank">
+              Source page <ExternalLink size={13} />
+            </a>
+          </article>
+        ))}
+        {!visibleModels.length ? <p className="rounded-md border border-dashed border-white/10 p-4 text-sm text-zinc-400">No saved PRINTZ models match that search. Try the outside library links below.</p> : null}
+      </div>
+
+      <div className="mt-2 border-t border-white/10 pt-4">
+        <p className="text-sm font-black text-zinc-100">Search outside libraries</p>
+        <p className="mt-1 text-sm leading-6 text-zinc-500">Use these when the PRINTZ catalog does not have what you need yet.</p>
+      </div>
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {printLookupProviders.map((provider) => (
           <ProviderSearchLink
@@ -897,15 +1017,31 @@ function Field({
   );
 }
 
-function Textarea({ defaultValue, label, name, placeholder }: { defaultValue?: string; label: string; name: string; placeholder?: string }) {
+function Textarea({
+  defaultValue,
+  label,
+  name,
+  onChange,
+  placeholder,
+  value,
+}: {
+  defaultValue?: string;
+  label: string;
+  name: string;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  value?: string;
+}) {
   return (
     <label className="grid min-w-0 gap-2 text-sm font-bold text-zinc-200">
       {label}
       <textarea
         className="min-h-28 w-full min-w-0 rounded-md border border-white/10 bg-zinc-950 px-3 py-3 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
-        defaultValue={defaultValue}
+        defaultValue={value === undefined ? defaultValue : undefined}
         name={name}
+        onChange={(event) => onChange?.(event.target.value)}
         placeholder={placeholder}
+        value={value}
       />
     </label>
   );
