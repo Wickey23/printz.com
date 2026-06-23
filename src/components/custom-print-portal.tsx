@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import type React from "react";
-import { Calculator, Eye, EyeOff, FileArchive, ImageIcon, ImagePlus, Loader2, LogIn, Upload, Video } from "lucide-react";
+import { Calculator, CheckCircle2, ExternalLink, Eye, EyeOff, FileArchive, ImageIcon, ImagePlus, Loader2, LogIn, Search, Upload, Video } from "lucide-react";
 import {
   createCustomPrintRequest,
   signInCustomer,
@@ -41,12 +41,42 @@ export function CustomPrintPortal({
   requests: CustomPrintRequest[];
   stockOptions: PrintStockOption[];
 }) {
-  if (!signedIn) return <CustomerAuthPanel />;
+  if (!signedIn) {
+    return (
+      <div className="grid gap-8">
+        <PublicPrintLookup />
+        <CustomerAuthPanel />
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
       <CustomPrintRequestForm defaultShippingAddress={defaultShippingAddress} defaultShippingName={defaultShippingName} stockOptions={stockOptions} />
       <PrintRequestHistory requests={requests} />
+    </div>
+  );
+}
+
+function PublicPrintLookup() {
+  const [modelSourceUrl, setModelSourceUrl] = useState("");
+  const [modelSourcePlatform, setModelSourcePlatform] = useState("");
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
+      <PrintLookup
+        modelSourcePlatform={modelSourcePlatform}
+        modelSourceUrl={modelSourceUrl}
+        onSelect={(url, platform) => {
+          setModelSourceUrl(url);
+          setModelSourcePlatform(platform);
+        }}
+      />
+      {modelSourceUrl ? (
+        <p className="mt-3 text-sm font-semibold text-amber-100">
+          Sign in or create an account below to request this {modelSourcePlatform || "model"} print.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -120,6 +150,8 @@ function CustomPrintRequestForm({
 }) {
   const [state, action, pending] = useActionState(createCustomPrintRequest, requestState);
   const [uploads, setUploads] = useState<UploadedFile[]>([]);
+  const [modelSourceUrl, setModelSourceUrl] = useState("");
+  const [modelSourcePlatform, setModelSourcePlatform] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [grams, setGrams] = useState("");
@@ -212,9 +244,9 @@ function CustomPrintRequestForm({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     const form = event.currentTarget;
-    if (!modelUploads.length) {
+    if (!modelUploads.length && !modelSourceUrl.trim()) {
       event.preventDefault();
-      setUploadMessage("Upload at least one 3D model file before submitting.");
+      setUploadMessage("Upload a 3D model file or paste a model source link before submitting.");
       form.querySelector<HTMLElement>("[data-upload-section]")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
@@ -235,7 +267,7 @@ function CustomPrintRequestForm({
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-amber-200">Custom printing</p>
           <h2 className="mt-2 text-3xl font-black text-zinc-50">Upload files for us to print</h2>
           <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Upload STL, 3MF, OBJ, STEP, or ZIP files. We review the model, create a custom Etsy checkout listing, then send your Etsy payment link.
+            Upload STL, 3MF, OBJ, STEP, or ZIP files, or link a model you found online. We review the source, create a custom Etsy checkout listing, then send your Etsy payment link.
           </p>
         </div>
       </div>
@@ -244,6 +276,17 @@ function CustomPrintRequestForm({
         <div className="grid gap-4">
           <Field label="Project title" name="title" placeholder="Desk name plate, replacement bracket, classroom organizer" required />
           <Textarea label="Print notes" name="notes" placeholder="Tell us what the part is for, strength needs, orientation concerns, scale, or deadlines." />
+
+          <PrintLookup
+            modelSourcePlatform={modelSourcePlatform}
+            modelSourceUrl={modelSourceUrl}
+            onSelect={(url, platform) => {
+              setModelSourceUrl(url);
+              setModelSourcePlatform(platform);
+            }}
+          />
+          <input name="model_source_url" type="hidden" value={modelSourceUrl} />
+          <input name="model_source_platform" type="hidden" value={modelSourcePlatform} />
 
           <div className="grid gap-3 rounded-lg border border-white/10 bg-zinc-950 p-4" data-upload-section>
             <div className="flex flex-wrap gap-3">
@@ -262,6 +305,11 @@ function CustomPrintRequestForm({
                 onChange={(files) => void uploadFiles(files, "reference")}
               />
             </div>
+            {!modelUploads.length && modelSourceUrl ? (
+              <p className="text-sm font-semibold text-emerald-300">
+                Source model selected. You can submit now, or upload downloaded files if you already have them.
+              </p>
+            ) : null}
             {uploadMessage ? <p className="text-sm font-semibold text-amber-200">{uploadMessage}</p> : null}
             <UploadList title="3D files" uploads={modelUploads} />
             <UploadList title="Reference media" uploads={referenceUploads} />
@@ -338,6 +386,11 @@ function PrintRequestHistory({ requests }: { requests: CustomPrintRequest[] }) {
           <article className="rounded-md border border-white/10 bg-zinc-950 p-4" key={request.id}>
             <p className="font-black text-zinc-50">{request.title}</p>
             <p className="mt-1 text-sm text-zinc-400">{request.file_names.length} file(s) uploaded</p>
+            {request.model_source_url ? (
+              <a className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-amber-200 underline" href={request.model_source_url} rel="noreferrer" target="_blank">
+                {request.model_source_platform || "Model source"} <ExternalLink size={13} />
+              </a>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
               <span className="rounded-md bg-amber-300/15 px-2 py-1 text-amber-100">{request.payment_status.replaceAll("_", " ")}</span>
               <span className="rounded-md bg-white/10 px-2 py-1 text-zinc-200">{request.production_status.replaceAll("_", " ")}</span>
@@ -487,6 +540,145 @@ function UploadPreview({
       </div>
     </aside>
   );
+}
+
+const printLookupProviders = [
+  {
+    name: "MakerWorld",
+    baseUrl: "https://makerworld.com/en/search/models",
+    queryParam: "keyword",
+    modelUrlPattern: /^https:\/\/(?:www\.)?makerworld\.com\/.+/i,
+  },
+  {
+    name: "Printables",
+    baseUrl: "https://www.printables.com/search/models",
+    queryParam: "q",
+    modelUrlPattern: /^https:\/\/(?:www\.)?printables\.com\/.+/i,
+  },
+  {
+    name: "Thingiverse",
+    baseUrl: "https://www.thingiverse.com/search",
+    queryParam: "q",
+    modelUrlPattern: /^https:\/\/(?:www\.)?thingiverse\.com\/.+/i,
+  },
+  {
+    name: "Thangs",
+    baseUrl: "https://thangs.com/search",
+    queryParam: "q",
+    modelUrlPattern: /^https:\/\/(?:www\.)?thangs\.com\/.+/i,
+  },
+  {
+    name: "Cults",
+    baseUrl: "https://cults3d.com/en/search",
+    queryParam: "q",
+    modelUrlPattern: /^https:\/\/(?:www\.)?cults3d\.com\/.+/i,
+  },
+] as const;
+
+function PrintLookup({
+  modelSourcePlatform,
+  modelSourceUrl,
+  onSelect,
+}: {
+  modelSourcePlatform: string;
+  modelSourceUrl: string;
+  onSelect: (url: string, platform: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [sourceUrl, setSourceUrl] = useState(modelSourceUrl);
+  const guessedPlatform = guessProvider(sourceUrl);
+
+  function saveSource() {
+    const cleanUrl = sourceUrl.trim();
+    if (!cleanUrl) {
+      onSelect("", "");
+      return;
+    }
+    onSelect(cleanUrl, guessedPlatform || "Model source");
+  }
+
+  return (
+    <section className="grid gap-4 rounded-lg border border-white/10 bg-zinc-950 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="inline-flex items-center gap-2 text-sm font-black text-zinc-100">
+            <Search size={16} />
+            Find a printable model
+          </p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+            Search model libraries, open a result, then paste the model page link here so we can review license, files, and printability.
+          </p>
+        </div>
+        {modelSourceUrl ? (
+          <span className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-300/15 px-2 text-xs font-black text-emerald-200">
+            <CheckCircle2 size={14} />
+            {modelSourcePlatform || "Source selected"}
+          </span>
+        ) : null}
+      </div>
+
+      <label className="grid gap-2 text-sm font-bold text-zinc-200">
+        Search terms
+        <input
+          className="h-11 w-full min-w-0 rounded-md border border-white/10 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="desk organizer, classroom hall pass, headphone hook"
+          value={query}
+        />
+      </label>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {printLookupProviders.map((provider) => (
+          <a
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-white/10 px-3 text-sm font-bold text-zinc-200 transition hover:border-amber-300/40 hover:text-amber-100"
+            href={providerSearchUrl(provider, query)}
+            key={provider.name}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {provider.name}
+            <ExternalLink size={14} />
+          </a>
+        ))}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+        <label className="grid gap-2 text-sm font-bold text-zinc-200">
+          Model page link
+          <input
+            className="h-11 w-full min-w-0 rounded-md border border-white/10 bg-black px-3 text-sm text-zinc-100 outline-none transition focus:border-amber-300/60"
+            onBlur={saveSource}
+            onChange={(event) => setSourceUrl(event.target.value)}
+            placeholder="https://makerworld.com/en/models/..."
+            type="url"
+            value={sourceUrl}
+          />
+        </label>
+        <button
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950"
+          onClick={saveSource}
+          type="button"
+        >
+          Use model
+        </button>
+      </div>
+      <p className="text-xs leading-5 text-zinc-500">
+        We still verify license and printability before quoting. Upload files too if you already downloaded them.
+      </p>
+    </section>
+  );
+}
+
+function providerSearchUrl(provider: (typeof printLookupProviders)[number], query: string) {
+  const url = new URL(provider.baseUrl);
+  const cleanQuery = query.trim();
+  if (cleanQuery) url.searchParams.set(provider.queryParam, cleanQuery);
+  return url.toString();
+}
+
+function guessProvider(url: string) {
+  const clean = url.trim();
+  return printLookupProviders.find((provider) => provider.modelUrlPattern.test(clean))?.name || "";
 }
 
 function UploadButton({

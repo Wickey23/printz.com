@@ -258,6 +258,8 @@ function suggestionToPrintRequest(suggestion: Suggestion): CustomPrintRequest | 
       estimated_hours: nullableNumber(payload.estimated_hours),
       shipping_name: asString(payload.shipping_name),
       shipping_address: asString(payload.shipping_address),
+      model_source_url: nullableString(payload.model_source_url),
+      model_source_platform: nullableString(payload.model_source_platform),
       file_urls: asStringArray(payload.file_urls),
       file_names: asStringArray(payload.file_names),
       image_urls: asStringArray(payload.image_urls),

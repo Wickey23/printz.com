@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { updateCustomPrintEtsyCheckout } from "@/app/actions";
 import { requireAdmin } from "@/lib/auth";
 import { getPrintRequestsForAdmin } from "@/lib/data";
@@ -50,6 +51,17 @@ export default async function AdminPrintRequestsPage() {
                   {request.customer_email} · {new Date(request.created_at).toLocaleString()}
                 </p>
                 {request.notes ? <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{request.notes}</p> : null}
+                {request.model_source_url ? (
+                  <a
+                    className="mt-4 inline-flex items-center gap-2 rounded-md border border-amber-300/30 px-3 py-2 text-sm font-bold text-amber-100"
+                    href={request.model_source_url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Review {request.model_source_platform || "model source"}
+                    <ExternalLink size={14} />
+                  </a>
+                ) : null}
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   <Info label="Material" value={request.material} />

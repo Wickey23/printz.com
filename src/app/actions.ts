@@ -279,13 +279,15 @@ export async function createCustomPrintRequest(
   const fileUrls = formData.getAll("file_urls").map(String).filter(Boolean);
   const fileNames = formData.getAll("file_names").map(String).filter(Boolean);
   const imageUrls = formData.getAll("image_urls").map(String).filter(Boolean);
+  const modelSourceUrl = optionalTextFromForm(formData, "model_source_url");
+  const modelSourcePlatform = optionalTextFromForm(formData, "model_source_platform");
   const quantity = clampNumber(textFromForm(formData, "quantity"), 1, 100, 1);
   const estimatedGrams = optionalNumber(textFromForm(formData, "estimated_grams"));
   const estimatedHours = optionalNumber(textFromForm(formData, "estimated_hours"));
   const estimateCents = calculatePrintEstimateCents({ quantity, estimatedGrams, estimatedHours });
 
   if (!title || !shippingName || !shippingAddress) return failure("Project title, shipping name, and shipping address are required.");
-  if (!fileUrls.length) return failure("Upload at least one 3D model file before submitting.");
+  if (!fileUrls.length && !modelSourceUrl) return failure("Upload at least one 3D model file or paste a model source link before submitting.");
 
   const payload = {
     user_id: user.id,
@@ -301,6 +303,8 @@ export async function createCustomPrintRequest(
     estimated_hours: estimatedHours,
     shipping_name: shippingName,
     shipping_address: shippingAddress,
+    model_source_url: modelSourceUrl,
+    model_source_platform: modelSourcePlatform,
     file_urls: fileUrls,
     file_names: fileNames.length ? fileNames : fileUrls,
     image_urls: imageUrls,
@@ -345,6 +349,8 @@ export async function createCustomPrintRequest(
         color: payload.color,
         quantity,
         fileNames: payload.file_names,
+        modelSourceUrl,
+        modelSourcePlatform,
       });
 
       revalidatePath("/custom-print");
@@ -364,6 +370,8 @@ export async function createCustomPrintRequest(
     color: textFromForm(formData, "color") || "Black",
     quantity,
     fileNames: fileNames.length ? fileNames : fileUrls,
+    modelSourceUrl,
+    modelSourcePlatform,
   });
 
   revalidatePath("/custom-print");
@@ -644,6 +652,8 @@ async function sendPrintRequestEmail({
   fileNames,
   id,
   material,
+  modelSourcePlatform,
+  modelSourceUrl,
   quantity,
   title,
 }: {
@@ -652,6 +662,8 @@ async function sendPrintRequestEmail({
   fileNames: string[];
   id: string;
   material: string;
+  modelSourcePlatform?: string | null;
+  modelSourceUrl?: string | null;
   quantity: number;
   title: string;
 }) {
@@ -679,11 +691,12 @@ async function sendPrintRequestEmail({
         `Material: ${material}`,
         `Color: ${color}`,
         `Quantity: ${quantity}`,
-        `Files: ${fileNames.join(", ")}`,
+        `Files: ${fileNames.length ? fileNames.join(", ") : "No upload yet"}`,
+        modelSourceUrl ? `Source: ${modelSourcePlatform ? `${modelSourcePlatform} - ` : ""}${modelSourceUrl}` : "",
         `Request ID: ${id}`,
         ``,
         `Review it here: ${adminUrl}`,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     }),
   });
 }

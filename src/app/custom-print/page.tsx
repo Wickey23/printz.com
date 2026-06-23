@@ -6,7 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = {
   title: "Custom 3D Printing | PRINTZ By Khan",
-  description: "Upload 3D model files, request a print, and pay before production through PRINTZ By Khan.",
+  description: "Find or upload 3D model files, request a print, and pay before production through PRINTZ By Khan.",
 };
 
 export default async function CustomPrintPage() {
@@ -26,13 +26,13 @@ export default async function CustomPrintPage() {
       <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-200">Print your file</p>
-          <h1 className="mt-3 text-5xl font-black tracking-tight text-zinc-50 sm:text-6xl">Upload. Quote. Pay on Etsy.</h1>
+          <h1 className="mt-3 text-5xl font-black tracking-tight text-zinc-50 sm:text-6xl">Find. Request. Pay on Etsy.</h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-zinc-300">
-            Create an account, upload your model files, and add print specs. We review each file, create a custom Etsy checkout listing, and print after payment.
+            Create an account, search model libraries or upload your own files, and add print specs. We review each model, create a custom Etsy checkout listing, and print after payment.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Step icon={<Box size={18} />} title="Upload files" text="STL, 3MF, OBJ, STEP, G-code, ZIP, and more." />
+          <Step icon={<Box size={18} />} title="Find or upload" text="Search model libraries or upload STL, 3MF, OBJ, STEP, ZIP, and more." />
           <Step icon={<CreditCard size={18} />} title="Pay on Etsy" text="A custom Etsy checkout link appears after review." />
           <Step icon={<Truck size={18} />} title="We ship it" text="Production starts after review and payment." />
         </div>

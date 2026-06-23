@@ -100,6 +100,8 @@ export type CustomPrintRequest = {
   estimated_hours: number | null;
   shipping_name: string;
   shipping_address: string;
+  model_source_url?: string | null;
+  model_source_platform?: string | null;
   file_urls: string[];
   file_names: string[];
   image_urls: string[];

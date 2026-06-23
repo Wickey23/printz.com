@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PackageCheck, UserRound } from "lucide-react";
+import { ExternalLink, PackageCheck, UserRound } from "lucide-react";
 import { signOutCustomer } from "@/app/actions";
 import { AccountForm } from "@/components/account-form";
 import { getPrintRequestsForUser } from "@/lib/data";
@@ -78,6 +78,11 @@ export default async function AccountPage() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="font-black text-zinc-50">{request.title}</p>
+                    {request.model_source_url ? (
+                      <a className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-amber-200 underline" href={request.model_source_url} rel="noreferrer" target="_blank">
+                        {request.model_source_platform || "Model source"} <ExternalLink size={13} />
+                      </a>
+                    ) : null}
                     <p className="mt-1 text-sm text-zinc-400">
                       {new Date(request.created_at).toLocaleDateString()} · {request.file_names.length} file(s)
                     </p>

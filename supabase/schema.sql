@@ -90,6 +90,8 @@ create table if not exists public.custom_print_requests (
   estimated_hours numeric(10, 2),
   shipping_name text not null,
   shipping_address text not null,
+  model_source_url text,
+  model_source_platform text,
   file_urls text[] not null default '{}',
   file_names text[] not null default '{}',
   image_urls text[] not null default '{}',
