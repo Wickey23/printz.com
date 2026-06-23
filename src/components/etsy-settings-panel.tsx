@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Info } from "lucide-react";
 
 type EtsySettings = {
   shopId: string;
@@ -91,10 +92,30 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
         </button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <IdField label="Shop ID" value={form.shopId} onChange={(value) => setForm((current) => ({ ...current, shopId: value }))} />
-        <IdField label="Default taxonomy ID" value={form.taxonomyId} onChange={(value) => setForm((current) => ({ ...current, taxonomyId: value }))} />
-        <IdField label="Shipping profile ID" value={form.shippingProfileId} onChange={(value) => setForm((current) => ({ ...current, shippingProfileId: value }))} />
-        <IdField label="Readiness state ID" value={form.readinessStateId} onChange={(value) => setForm((current) => ({ ...current, readinessStateId: value }))} />
+        <IdField
+          helperText="Requires a connected Etsy account and a shop that Etsy can return through OAuth. Auto-detect should fill this after you connect Etsy."
+          label="Shop ID"
+          value={form.shopId}
+          onChange={(value) => setForm((current) => ({ ...current, shopId: value }))}
+        />
+        <IdField
+          helperText="Uses Etsy's seller taxonomy tree. Auto-detect can usually fill this from the public taxonomy endpoint."
+          label="Default taxonomy ID"
+          value={form.taxonomyId}
+          onChange={(value) => setForm((current) => ({ ...current, taxonomyId: value }))}
+        />
+        <IdField
+          helperText="Create a shipping profile in Etsy Shipping settings, then auto-detect can usually read the shipping profile ID."
+          label="Shipping profile ID"
+          value={form.shippingProfileId}
+          onChange={(value) => setForm((current) => ({ ...current, shippingProfileId: value }))}
+        />
+        <IdField
+          helperText="Create a processing profile in Etsy Shipping settings. The app uses that as the readiness state for physical drafts."
+          label="Readiness state ID"
+          value={form.readinessStateId}
+          onChange={(value) => setForm((current) => ({ ...current, readinessStateId: value }))}
+        />
       </div>
       <button
         className="mt-4 inline-flex h-10 items-center rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
@@ -109,10 +130,29 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
   );
 }
 
-function IdField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+function IdField({
+  label,
+  helperText,
+  onChange,
+  value,
+}: {
+  label: string;
+  helperText: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
   return (
     <label className="grid gap-1 text-sm font-bold text-zinc-200">
-      {label}
+      <span className="inline-flex items-center gap-1">
+        <span>{label}</span>
+        <span className="inline-flex items-center" title={helperText}>
+          <Info
+            className="text-zinc-500 hover:text-amber-200"
+            size={14}
+            aria-hidden="true"
+          />
+        </span>
+      </span>
       <input
         className="h-10 w-full rounded-md border border-white/10 bg-black px-3 text-sm text-zinc-100 outline-none focus:border-amber-200"
         inputMode="numeric"

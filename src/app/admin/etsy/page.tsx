@@ -3,14 +3,14 @@ import { AlertTriangle, Bot, CheckCircle2, ExternalLink, RefreshCw } from "lucid
 import { EtsySettingsPanel } from "@/components/etsy-settings-panel";
 import { EtsySyncPanel } from "@/components/etsy-sync-panel";
 import { requireAdmin } from "@/lib/auth";
-import { etsyRedirectUri, getEffectiveEtsyRuntimeSettings, getEtsyOAuthToken } from "@/lib/etsy-auth";
+import { etsyRedirectUri, getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken } from "@/lib/etsy-auth";
 
 export default async function EtsyControlCenterPage() {
   const auth = await requireAdmin();
   if (!auth.approved) return null;
 
   const [etsyToken, etsySettings] = await Promise.all([
-    getEtsyOAuthToken().catch(() => null),
+    getValidEtsyOAuthToken().catch(() => null),
     getEffectiveEtsyRuntimeSettings().catch(() => ({
       shopId: "",
       taxonomyId: "",

@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { isApprovedAdmin } from "@/lib/auth";
 import { createEtsyDraftFromProduct, etsyDraftRequirements } from "@/lib/etsy-drafts";
-import { getEffectiveEtsyRuntimeSettings, getEtsyOAuthToken } from "@/lib/etsy-auth";
+import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken } from "@/lib/etsy-auth";
 import { productSchema } from "@/lib/schemas";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -509,7 +509,7 @@ async function createEtsyDraftFromAction(
     };
   }
 
-  const [etsyToken, etsySettings] = await Promise.all([getEtsyOAuthToken(), getEffectiveEtsyRuntimeSettings()]);
+  const [etsyToken, etsySettings] = await Promise.all([getValidEtsyOAuthToken(), getEffectiveEtsyRuntimeSettings()]);
   const missing = etsyDraftRequirements(product, { hasOAuthToken: Boolean(etsyToken?.access_token), settings: etsySettings });
   if (missing.length) {
     return {

@@ -7,7 +7,7 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/sup
 import { isApprovedAdmin } from "@/lib/auth";
 import { getAllowedAdminEmails } from "@/lib/config";
 import { createEtsyDraftFromProduct, etsyDraftRequirements } from "@/lib/etsy-drafts";
-import { getEffectiveEtsyRuntimeSettings, getEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
+import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { syncEtsyListings } from "@/lib/etsy-sync";
 import type { Product } from "@/lib/types";
 import { optionalTextFromForm, slugify, textFromForm } from "@/lib/utils";
@@ -849,7 +849,7 @@ export async function createEtsyDraftListing(state: EtsyDraftState, formData: Fo
     };
   }
 
-  const [etsyToken, etsySettings] = await Promise.all([getEtsyOAuthToken(), getEffectiveEtsyRuntimeSettings()]);
+  const [etsyToken, etsySettings] = await Promise.all([getValidEtsyOAuthToken(), getEffectiveEtsyRuntimeSettings()]);
   const missing = etsyDraftRequirements(product, { hasOAuthToken: Boolean(etsyToken?.access_token), settings: etsySettings });
   if (missing.length) {
     return failure(

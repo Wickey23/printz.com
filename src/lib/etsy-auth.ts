@@ -85,6 +85,23 @@ export async function getEtsyOAuthToken() {
   }
 }
 
+export async function getValidEtsyOAuthToken() {
+  const token = await getEtsyOAuthToken();
+  if (!token?.access_token) return null;
+
+  const expiresSoon = token.expires_at ? token.expires_at <= Date.now() + 5 * 60 * 1000 : false;
+  if (!expiresSoon) {
+    return token;
+  }
+
+  if (!token.refresh_token || !process.env.ETSY_API_KEY) {
+    return null;
+  }
+
+  const refreshed = await refreshEtsyOAuthToken(token.refresh_token).catch(() => null);
+  return refreshed;
+}
+
 export async function setEtsyRuntimeSettings(settings: Partial<EtsyRuntimeSettings>) {
   const cookieStore = await cookies();
   const clean = normalizeEtsyRuntimeSettings(settings);
@@ -147,4 +164,36 @@ function cookieOptions(maxAge: number) {
     path: "/",
     maxAge,
   };
+}
+
+async function refreshEtsyOAuthToken(refreshToken: string) {
+  const body = new URLSearchParams();
+  body.set("grant_type", "refresh_token");
+  body.set("client_id", etsyKeystring());
+  body.set("refresh_token", refreshToken);
+
+  const response = await fetch("https://api.etsy.com/v3/public/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  const payload = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+
+  if (!response.ok || !payload.access_token) {
+    throw new Error("Could not refresh Etsy OAuth token.");
+  }
+
+  const token = {
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token || refreshToken,
+    expires_at: Date.now() + (payload.expires_in || 3600) * 1000,
+  };
+
+  await setEtsyOAuthToken(token);
+  return token;
 }

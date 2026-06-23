@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isApprovedAdmin } from "@/lib/auth";
 import { discoverEtsyRuntimeIds } from "@/lib/etsy-discovery";
-import { getEtsyOAuthToken, getSavedEtsyRuntimeSettings, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
+import { getSavedEtsyRuntimeSettings, getValidEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -32,7 +32,7 @@ export async function PUT() {
     return NextResponse.json({ ok: false, message: "Unauthorized." }, { status: 401 });
   }
 
-  const etsyToken = await getEtsyOAuthToken();
+  const etsyToken = await getValidEtsyOAuthToken();
   if (!etsyToken?.access_token) {
     return NextResponse.json({ ok: false, message: "Connect Etsy first, then run auto-detect." }, { status: 400 });
   }
