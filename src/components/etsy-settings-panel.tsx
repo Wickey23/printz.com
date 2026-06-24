@@ -15,6 +15,8 @@ type SettingsPayload = {
   ok?: boolean;
   message?: string;
   settings?: Partial<EtsySettings>;
+  shippingProfiles?: Array<{ id: string; title: string }>;
+  readinessStates?: Array<{ id: string; title: string }>;
 };
 
 export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
@@ -24,11 +26,14 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
   const [ok, setOk] = useState(false);
   const [pending, setPending] = useState(false);
   const [detecting, setDetecting] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<SettingsPayload | null>(null);
 
   async function save() {
     setPending(true);
     setMessage("");
     setOk(false);
+    setTestResult(null);
     try {
       const response = await fetch("/api/etsy/settings", {
         method: "POST",
@@ -48,6 +53,7 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
     setDetecting(true);
     setMessage("");
     setOk(false);
+    setTestResult(null);
     try {
       const response = await fetch("/api/etsy/settings", { method: "PUT" });
       const payload = await response.json() as SettingsPayload;
@@ -59,6 +65,22 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
     }
   }
 
+  async function testConnection() {
+    setTesting(true);
+    setMessage("");
+    setOk(false);
+    setTestResult(null);
+    try {
+      const response = await fetch("/api/etsy/test");
+      const payload = await response.json() as SettingsPayload;
+      handlePayload(response, payload);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not test Etsy connection.");
+    } finally {
+      setTesting(false);
+    }
+  }
+
   function handlePayload(response: Response, payload: SettingsPayload) {
     if (payload.settings) {
       setForm((current) => ({
@@ -67,6 +89,9 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
         shippingProfileId: payload.settings?.shippingProfileId || current.shippingProfileId,
         readinessStateId: payload.settings?.readinessStateId || current.readinessStateId,
       }));
+    }
+    if (payload.shippingProfiles || payload.readinessStates) {
+      setTestResult(payload);
     }
     setOk(Boolean(payload.ok));
     setMessage(payload.message || (response.ok ? "Saved." : "Could not save settings."));
@@ -82,14 +107,24 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
             Auto-detect uses your connected Etsy account. If Etsy does not expose shipping or readiness values here, keep the manually entered ones. Shipping/readiness are required for physical 3D printed drafts.
           </p>
         </div>
-        <button
-          className="inline-flex h-10 items-center rounded-md border border-amber-300/30 px-4 text-sm font-black text-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={pending || detecting}
-          onClick={() => void autoDetect()}
-          type="button"
-        >
-          {detecting ? "Detecting..." : "Auto-detect IDs"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="inline-flex h-10 items-center rounded-md border border-amber-300/30 px-4 text-sm font-black text-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={pending || detecting || testing}
+            onClick={() => void autoDetect()}
+            type="button"
+          >
+            {detecting ? "Detecting..." : "Auto-detect IDs"}
+          </button>
+          <button
+            className="inline-flex h-10 items-center rounded-md border border-white/10 px-4 text-sm font-black text-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={pending || detecting || testing}
+            onClick={() => void testConnection()}
+            type="button"
+          >
+            {testing ? "Testing..." : "Test Etsy connection"}
+          </button>
+        </div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <IdField
@@ -119,12 +154,26 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
       </div>
       <button
         className="mt-4 inline-flex h-10 items-center rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={pending || detecting}
+        disabled={pending || detecting || testing}
         onClick={() => void save()}
         type="button"
       >
         {pending ? "Saving..." : "Save Etsy IDs"}
       </button>
+      {testResult?.shippingProfiles?.length || testResult?.readinessStates?.length ? (
+        <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-xs leading-5 text-zinc-400">
+          {testResult.shippingProfiles?.length ? (
+            <p>
+              Shipping profiles: {testResult.shippingProfiles.map((profile) => `${profile.title || profile.id} (${profile.id})`).join(", ")}
+            </p>
+          ) : null}
+          {testResult.readinessStates?.length ? (
+            <p>
+              Readiness states: {testResult.readinessStates.map((state) => `${state.title || state.id} (${state.id})`).join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {message ? <p className={ok ? "mt-3 text-sm font-semibold text-emerald-300" : "mt-3 text-sm font-semibold text-amber-200"}>{message}</p> : null}
     </div>
   );
