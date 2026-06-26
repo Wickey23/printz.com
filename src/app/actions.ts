@@ -727,6 +727,33 @@ export async function runProductCommandCenterDryRun(state: ActionState): Promise
     return failure(error instanceof Error ? error.message : "Product command-center dry run failed.");
   }
 }
+
+export async function runProductCommandCenterLiveSync(state: ActionState): Promise<ActionState> {
+  void state;
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  try {
+    const result = await runProductCommandSync({ dryRun: false });
+    revalidatePath("/");
+    revalidatePath("/products");
+    revalidatePath("/admin");
+
+    const issueCount = result.blocked + result.conflicts + result.errors.length;
+    const summary = [
+      `Live sync complete: ${result.created} created, ${result.updated} updated`,
+      `${result.mediaUploads} media uploaded`,
+      `${result.mediaSkipped || 0} media skipped`,
+      `${result.blocked} blocked`,
+      `${result.conflicts} conflicts`,
+      `${result.errors.length} system errors`,
+      "Site Products mirror refreshed",
+    ].join("; ");
+
+    return issueCount ? failure(summary) : success(summary);
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Product command-center live sync failed.");
+  }
+}
 export async function createProduct(_: ActionState, formData: FormData): Promise<ActionState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 

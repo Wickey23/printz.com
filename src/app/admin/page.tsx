@@ -55,7 +55,7 @@ export default async function AdminPage() {
             <div>
               <h2 className="text-xl font-bold">Product command center sync</h2>
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                The command center tabs merge into one product record before syncing to Supabase. Use dry run before checking real rows into the final stage.
+                Use dry run to preview. Use live sync to pull checked Sheet rows into the site, import Drive media, and backfill the read-only Site Products tab from the current site database.
               </p>
             </div>
             <ProductSyncDryRunButton />
@@ -94,8 +94,8 @@ export default async function AdminPage() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
-            <a className="text-amber-200" href="https://docs.google.com/spreadsheets/d/14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs/edit#gid=1468247011" rel="noreferrer" target="_blank">
-              Open Command Center
+            <a className="text-amber-200" href="https://docs.google.com/spreadsheets/d/14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs/edit#gid=230000001" rel="noreferrer" target="_blank">
+              Open Product Intake
             </a>
             <Link className="text-amber-200" href="/admin/products/new">Create manual product</Link>
           </div>

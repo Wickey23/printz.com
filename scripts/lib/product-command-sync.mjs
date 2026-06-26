@@ -16,15 +16,10 @@ import {
 } from "./product-command-rules.mjs";
 
 const SHEET_ID = "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
-const WORKING = "Sheet1";
+const WORKING = "Product Intake";
 const MIRROR = "Site Products";
-const SPLIT_TABS = [
-  "Research Queue",
-  "Rights & Attribution",
-  "Pricing & Production",
-  "Listing Builder",
-];
-const PRIMARY_WRITE_ORDER = ["Listing Builder", "Research Queue", WORKING, "Rights & Attribution", "Pricing & Production"];
+const SPLIT_TABS = [];
+const PRIMARY_WRITE_ORDER = [WORKING];
 
 export async function runProductCommandSync({env = process.env, dryRun = false} = {}) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -60,7 +55,7 @@ export async function runProductCommandSync({env = process.env, dryRun = false} 
   const current = [...(products || [])];
 
   for (const record of records) {
-    if (!parseBoolean(value(record, "Send to Final Stage / Site"))) continue;
+    if (!parseBoolean(valueAny(record, ["Send to Final Stage / Site", "Sync to Site"]))) continue;
 
     const rowNumber = record.primary?.rowNumber || 0;
     const sheetName = record.primary?.sheetName || WORKING;
@@ -278,7 +273,7 @@ async function readCommandCenterTabs(sheets) {
     grids.push(normalizeGrid(item.value.name, item.value.grid));
   }
 
-  if (!grids.find((grid) => grid.name === WORKING)) throw new Error("Sheet1 has no header row.");
+  if (!grids.find((grid) => grid.name === WORKING)) throw new Error(`${WORKING} has no header row.`);
   return grids;
 }
 
@@ -339,13 +334,13 @@ function sourceIdentity(source) {
   const rowId = text(source.values["Canonical Row ID"]);
   if (rowId) return `row:${rowId}`;
 
-  const sourceUrl = normalizeUrl(source.values["Source URL"] || source.values["Maker World Link"]);
+  const sourceUrl = normalizeUrl(source.values["Source URL"] || source.values["Maker World Link"] || source.values["Source / MakerWorld URL"]);
   if (sourceUrl) return `source:${sourceUrl}`;
 
   const slug = text(source.values.Slug);
   if (slug) return `slug:${slug.toLowerCase()}`;
 
-  const name = text(source.values.Name || source.values["Bambu studio FOUND PRINT"]);
+  const name = text(source.values.Name || source.values["Product Name"] || source.values["Bambu studio FOUND PRINT"]);
   if (name) return `name:${name.toLowerCase()}`;
 
   return `${source.sheetName}:${source.rowNumber}`;
@@ -366,9 +361,38 @@ function value(record, name) {
   return pos === undefined ? undefined : record.row[pos];
 }
 
+function valueAny(record, names) {
+  for (const name of names) {
+    const current = value(record, name);
+    if (!isBlank(current)) return current;
+  }
+  return undefined;
+}
+
 function get(row, idx, name) {
   const i = idx.get(name);
   return i === undefined ? undefined : row[i];
+}
+
+function getAny(row, idx, names) {
+  for (const name of names) {
+    const current = get(row, idx, name);
+    if (!isBlank(current)) return current;
+  }
+  return undefined;
+}
+
+function keywordFromSourceUrl(sourceUrl) {
+  if (!sourceUrl) return null;
+  try {
+    const url = new URL(sourceUrl);
+    const path = decodeURIComponent(url.pathname);
+    const modelSegment = path.split("/").filter(Boolean).find((part) => /[a-z]/i.test(part) && !/^models?$|^en$/.test(part));
+    const cleaned = String(modelSegment || "").replace(/^\d+[-_]?/, "").replace(/[-_]+/g, " ").trim();
+    return cleaned || null;
+  } catch {
+    return null;
+  }
 }
 
 function text(v) {
@@ -381,38 +405,40 @@ function nullableBool(v) {
 }
 
 function toProduct(row, idx, n, sheetName = WORKING) {
-  const name = get(row, idx, "Name") || get(row, idx, "Bambu studio FOUND PRINT");
+  const sourceUrl = text(getAny(row, idx, ["Source URL", "Maker World Link", "Source / MakerWorld URL"]));
+  const primaryKeyword = text(getAny(row, idx, ["Primary Keyword", "Product Keyword", "Keywords to search"])) || keywordFromSourceUrl(sourceUrl);
+  const name = getAny(row, idx, ["Name", "Product Name", "Bambu studio FOUND PRINT"]) || primaryKeyword;
   return {
     id: text(get(row, idx, "Product ID")),
     name: text(name),
     slug: text(get(row, idx, "Slug")),
-    short_description: text(get(row, idx, "Short Description")),
-    full_description: text(get(row, idx, "Full Description")),
-    category: text(get(row, idx, "Category")),
+    short_description: text(getAny(row, idx, ["Short Description", "Description"])) || text(name),
+    full_description: text(get(row, idx, "Full Description")) || text(getAny(row, idx, ["Short Description", "Description"])),
+    category: text(get(row, idx, "Category")) || "Functional Prints",
     price: parseNumber(get(row, idx, "Price") ?? get(row, idx, "AI Draft Price")),
     etsy_url: text(get(row, idx, "Etsy URL")),
     main_image_url: text(get(row, idx, "Main Image (Drive or Direct URL)") ?? get(row, idx, "Main Image (Drive File URL)")),
     video_url: text(get(row, idx, "Video URL")),
-    materials: text(get(row, idx, "Material Options (comma-separated)") ?? get(row, idx, "Material Choices (comma-separated)")),
+    materials: text(getAny(row, idx, ["Materials", "Material Options (comma-separated)", "Material Choices (comma-separated)"])),
     dimensions: text(get(row, idx, "Dimensions")),
     customization_notes: text(get(row, idx, "Customization Notes")),
     personalization_enabled: parseBoolean(get(row, idx, "Personalization Enabled")),
     personalization_prompt: text(get(row, idx, "Personalization Prompt")),
-    color_options: parseList(get(row, idx, "Color Options (comma-separated)") ?? get(row, idx, "Color Choices (comma-separated)")),
+    color_options: parseList(getAny(row, idx, ["Color Options", "Color Options (comma-separated)", "Color Choices (comma-separated)"])),
     size_options: parseList(get(row, idx, "Size Options (comma-separated)")),
     finish_options: parseList(get(row, idx, "Finish Options (comma-separated)")),
     processing_time: text(get(row, idx, "Processing Time")),
     care_instructions: text(get(row, idx, "Care Instructions")),
-    source_url: text(get(row, idx, "Source URL") ?? get(row, idx, "Maker World Link")),
+    source_url: sourceUrl,
     license_notes: text(get(row, idx, "License Notes")),
-    tags: parseList(get(row, idx, "Tags")),
+    tags: parseList(get(row, idx, "Tags") || primaryKeyword),
     featured: parseBoolean(get(row, idx, "Featured")),
     active: parseBoolean(get(row, idx, "Active on Site")),
     workflow_status: text(get(row, idx, "Workflow Status")) || "Queued",
     sync_version: parseNumber(get(row, idx, "Sync Version")),
     sheet_row_id: text(get(row, idx, "Canonical Row ID")) || `${sheetName}:${n}`,
     creator_name: text(get(row, idx, "Creator Name")),
-    source_platform: text(get(row, idx, "Source Platform")),
+    source_platform: text(get(row, idx, "Source Platform")) || (sourceUrl?.includes("makerworld.com") ? "MakerWorld" : null),
     license_type: text(get(row, idx, "License Type") ?? get(row, idx, "Column 13")),
     license_url: text(get(row, idx, "License URL")),
     commercial_sale_allowed: nullableBool(get(row, idx, "Commercial Sale Allowed") ?? get(row, idx, "Commercial Print Sale")),
@@ -471,6 +497,7 @@ async function writeBack(sheets, record, p, warnings) {
     "Slug": p.slug,
     "Price": p.price,
     "Active on Site": p.active,
+    "Site URL": productSiteUrl(p.slug),
     "Workflow Status": p.active ? "Live" : "Ready",
     "Last Sync": p.sheet_synced_at,
     "Sync Version": p.sync_version,
@@ -529,10 +556,15 @@ async function audit(supabase, x, dry) {
 }
 
 async function mirror(sheets, products) {
-  const h = ["Product ID", "Name", "Slug", "Short Description", "Full Description", "Category", "Price", "Etsy URL", "Main Image (Drive or Direct URL)", "Video URL", "Materials", "Dimensions", "Customization Notes", "Personalization Enabled", "Personalization Prompt", "Color Options", "Size Options", "Finish Options", "Processing Time", "Care Instructions", "Source URL", "License Notes", "Tags", "Featured", "Active on Site", "Etsy Listing ID", "Etsy State", "Created At", "Updated At", "Workflow Status", "Rights Status", "Media Status", "Sync Version", "Last Sync", "Pricing Status", "Estimated Cost", "Suggested Price"];
-  const rows = products.map((p) => [p.id, p.name, p.slug, p.short_description, p.full_description, p.category, p.price, p.etsy_url, p.main_image_url, p.video_url, p.materials, p.dimensions, p.customization_notes, p.personalization_enabled, p.personalization_prompt, (p.color_options || []).join(", "), (p.size_options || []).join(", "), (p.finish_options || []).join(", "), p.processing_time, p.care_instructions, p.source_url, p.license_notes, (p.tags || []).join(", "), p.featured, p.active, p.etsy_listing_id, p.etsy_state, p.created_at, p.updated_at, p.workflow_status, p.rights_status, p.media_status, p.sync_version, p.sheet_synced_at, p.pricing_status, p.estimated_cost, p.suggested_price]);
+  const h = ["Product ID", "Name", "Primary Keyword", "Category", "Price", "Active on Site", "Site URL", "Main Image", "Media Status", "Source URL", "Rights Status", "Last Sync"];
+  const rows = products.map((p) => [p.id, p.name, (p.tags || [])[0] || "", p.category, p.price, p.active, productSiteUrl(p.slug), p.main_image_url, p.media_status, p.source_url, p.rights_status, p.sheet_synced_at || p.updated_at]);
   await sheets.clear([`${MIRROR}!A1:BK2000`]);
   await sheets.batch([{range: `${MIRROR}!A1`, values: [h, ...rows]}], "RAW");
+}
+
+function productSiteUrl(slug) {
+  const base = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "";
+  return base && slug ? `${base.replace(/\/$/, "")}/products/${slug}` : slug ? `/products/${slug}` : "";
 }
 
 function unique(values) {
