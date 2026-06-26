@@ -38,6 +38,7 @@ export const productSchema = z.object({
   etsy_url: urlOrEmpty,
   main_image_url: urlOrEmpty,
   video_url: urlOrEmpty,
+  drive_media_folder_url: urlOrEmpty,
   materials: z.string().trim().max(1000).optional().transform((value) => value || null),
   dimensions: z.string().trim().max(1000).optional().transform((value) => value || null),
   customization_notes: z.string().trim().max(1500).optional().transform((value) => value || null),

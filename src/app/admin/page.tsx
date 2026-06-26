@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { deleteProduct, deleteSuggestion, signOutAdmin, updateSuggestionStatus } from "@/app/actions";
+import { archiveProduct, deleteSuggestion, signOutAdmin, updateSuggestionStatus } from "@/app/actions";
+import { ProductSyncDryRunButton } from "@/components/product-sync-dry-run-button";
+import { DeactivateAllProductsPanel } from "@/components/deactivate-all-products-panel";
 import { requireAdmin } from "@/lib/auth";
-import { getAllProductsForAdmin, getSuggestionsForAdmin } from "@/lib/data";
+import { getAllProductsForAdmin, getProductSyncHealth, getSuggestionsForAdmin } from "@/lib/data";
 import { formatPrice } from "@/lib/utils";
 
 export default async function AdminPage() {
   const auth = await requireAdmin();
   if (!auth.approved) return <AccessDenied email={auth.user.email || ""} />;
 
-  const [products, suggestions] = await Promise.all([getAllProductsForAdmin(), getSuggestionsForAdmin()]);
+  const [products, suggestions, syncHealth] = await Promise.all([getAllProductsForAdmin(), getSuggestionsForAdmin(), getProductSyncHealth()]);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -48,6 +50,59 @@ export default async function AdminPage() {
       </div>
 
       <div className="grid gap-8">
+        <section className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold">Product command center sync</h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                The command center tabs merge into one product record before syncing to Supabase. Use dry run before checking real rows into the final stage.
+              </p>
+            </div>
+            <ProductSyncDryRunButton />
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SyncPill label="Supabase" ok={syncHealth.configured.supabase} />
+            <SyncPill label="Google service account" ok={syncHealth.configured.google} />
+            <SyncPill label="Sync secret" ok={syncHealth.configured.secret} />
+            <SyncPill label="Migration tables" ok={syncHealth.migrationReady} />
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div className="rounded-md border border-white/10 bg-zinc-950 p-4">
+              <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-zinc-400">Latest run</h3>
+              {syncHealth.lastRun ? (
+                <div className="mt-3 text-sm leading-6 text-zinc-300">
+                  <p>Started: {new Date(syncHealth.lastRun.started_at).toLocaleString()}</p>
+                  <p>Status counts: {Object.entries(syncHealth.latestRunCounts).map(([status, count]) => `${status}: ${count}`).join(", ") || "none"}</p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-zinc-500">No sync runs recorded yet.</p>
+              )}
+            </div>
+            <div className="rounded-md border border-white/10 bg-zinc-950 p-4">
+              <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-zinc-400">Recent issues</h3>
+              {syncHealth.recentErrors.length || syncHealth.deadLetters.length ? (
+                <ul className="mt-3 grid gap-2 text-sm text-zinc-300">
+                  {[...syncHealth.recentErrors.slice(0, 4), ...syncHealth.deadLetters.slice(0, 2)].map((item, index) => (
+                    <li className="rounded bg-red-500/10 p-2 text-red-100" key={`${"run_id" in item ? item.id : item.id}-${index}`}>
+                      {"status" in item ? `Row ${item.sheet_row || "?"}: ${item.status}${item.error ? ` - ${item.error}` : ""}` : `Dead letter row ${item.sheet_row || "?"}: ${item.error}`}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-zinc-500">No recent sync issues.</p>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
+            <a className="text-amber-200" href="https://docs.google.com/spreadsheets/d/14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs/edit#gid=1468247011" rel="noreferrer" target="_blank">
+              Open Command Center
+            </a>
+            <Link className="text-amber-200" href="/admin/products/new">Create manual product</Link>
+          </div>
+        </section>
+
+        <DeactivateAllProductsPanel />
+
         <section className="rounded-lg border border-white/10 bg-zinc-900/70">
           <div className="border-b border-white/10 p-5">
             <h2 className="text-xl font-bold">Products</h2>
@@ -74,10 +129,10 @@ export default async function AdminPage() {
                   <Link className="text-sm font-bold text-amber-200" href={`/admin/products/${product.id}`}>
                     Edit
                   </Link>
-                  <form action={deleteProduct}>
+                  <form action={archiveProduct}>
                     <input name="id" type="hidden" value={product.id} />
                     <button className="text-sm font-bold text-red-300" type="submit">
-                      Delete
+                      Archive
                     </button>
                   </form>
                 </div>
@@ -86,6 +141,8 @@ export default async function AdminPage() {
             {!products.length ? <p className="p-5 text-zinc-400">No products yet.</p> : null}
           </div>
         </section>
+
+        <DeactivateAllProductsPanel />
 
         <section className="rounded-lg border border-white/10 bg-zinc-900/70">
           <div className="border-b border-white/10 p-5">
@@ -97,7 +154,7 @@ export default async function AdminPage() {
                 <div>
                   <h3 className="font-bold text-zinc-50">{suggestion.title}</h3>
                   <p className="mt-1 text-sm text-zinc-400">
-                    {suggestion.name} · {suggestion.email} · {new Date(suggestion.created_at).toLocaleDateString()}
+                    {suggestion.name} - {suggestion.email} - {new Date(suggestion.created_at).toLocaleDateString()}
                   </p>
                   <p className="mt-3 text-sm leading-6 text-zinc-300">{suggestion.description}</p>
                 </div>
@@ -136,5 +193,14 @@ function AccessDenied({ email }: { email: string }) {
       <h1 className="text-4xl font-black text-zinc-50">Access denied</h1>
       <p className="mt-4 text-zinc-400">{email} is signed in, but is not in the approved admin list.</p>
     </section>
+  );
+}
+
+function SyncPill({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div className={ok ? "rounded-md border border-emerald-400/20 bg-emerald-400/10 p-3" : "rounded-md border border-red-400/20 bg-red-500/10 p-3"}>
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">{label}</p>
+      <p className={ok ? "mt-1 text-sm font-bold text-emerald-200" : "mt-1 text-sm font-bold text-red-200"}>{ok ? "Ready" : "Needs setup"}</p>
+    </div>
   );
 }

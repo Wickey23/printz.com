@@ -24,6 +24,22 @@ export type Product = {
   etsy_listing_id?: number | null;
   etsy_state?: string | null;
   synced_from_etsy_at?: string | null;
+  workflow_status?: string | null;
+  sheet_row_id?: string | null;
+  sync_version?: number | null;
+  sheet_synced_at?: string | null;
+  last_sync_source?: string | null;
+  archived_at?: string | null;
+  source_platform?: string | null;
+  creator_name?: string | null;
+  license_type?: string | null;
+  license_url?: string | null;
+  rights_status?: string | null;
+  media_status?: string | null;
+  drive_media_folder_url?: string | null;
+  pricing_status?: string | null;
+  estimated_cost?: number | null;
+  suggested_price?: number | null;
   tags: string[] | null;
   featured: boolean;
   active: boolean;
@@ -140,4 +156,45 @@ export type PrintableModel = {
   sort_order: number;
   created_at: string;
   updated_at: string;
+};
+
+export type ProductSyncRun = {
+  id: string;
+  run_id: string;
+  product_id: string | null;
+  sheet_name: string | null;
+  sheet_row: number | null;
+  operation: string;
+  status: string;
+  attempt: number;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+};
+
+export type ProductSyncDeadLetter = {
+  id: string;
+  product_id: string | null;
+  sheet_name: string | null;
+  sheet_row: number | null;
+  error: string;
+  attempts: number;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductSyncHealth = {
+  configured: {
+    supabase: boolean;
+    google: boolean;
+    secret: boolean;
+    sheetId: boolean;
+  };
+  migrationReady: boolean;
+  lastRun: ProductSyncRun | null;
+  latestRunCounts: Record<string, number>;
+  recentRuns: ProductSyncRun[];
+  recentErrors: ProductSyncRun[];
+  deadLetters: ProductSyncDeadLetter[];
 };

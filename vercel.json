@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sync-etsy",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/sync-product-command-center",
+      "schedule": "17 * * * *"
     }
   ]
 }

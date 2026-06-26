@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import { mockMedia, mockProducts, mockSuggestions } from "@/lib/mock-data";
-import type { CustomPrintRequest, EtsyTrendReport, PrintableModel, PrintStockOption, Product, ProductMedia, Suggestion } from "@/lib/types";
+import type { CustomPrintRequest, EtsyTrendReport, PrintableModel, PrintStockOption, Product, ProductMedia, ProductSyncDeadLetter, ProductSyncHealth, ProductSyncRun, Suggestion } from "@/lib/types";
 
 export const getProducts = cache(async () => {
   const supabase = createSupabaseAdminClient();
@@ -95,6 +95,65 @@ export const getProductMediaForProducts = cache(async (productIds: string[]) => 
   }, {});
 });
 
+
+export const getProductSyncHealth = cache(async (): Promise<ProductSyncHealth> => {
+  const configured = {
+    supabase: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
+    google: Boolean(
+      process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
+        (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY),
+    ),
+    secret: Boolean(process.env.PRODUCT_SYNC_SECRET || process.env.CRON_SECRET),
+    sheetId: Boolean(process.env.PRINTZ_PRODUCT_SHEET_ID),
+  };
+  const empty: ProductSyncHealth = {
+    configured,
+    migrationReady: false,
+    lastRun: null,
+    latestRunCounts: {},
+    recentRuns: [],
+    recentErrors: [],
+    deadLetters: [],
+  };
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return empty;
+
+  const [runsResult, deadLettersResult] = await Promise.all([
+    supabase
+      .from("product_sync_runs")
+      .select("id,run_id,product_id,sheet_name,sheet_row,operation,status,attempt,error,started_at,finished_at")
+      .order("started_at", { ascending: false })
+      .limit(80),
+    supabase
+      .from("product_sync_dead_letters")
+      .select("id,product_id,sheet_name,sheet_row,error,attempts,resolved_at,created_at,updated_at")
+      .is("resolved_at", null)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+
+  if (runsResult.error) return empty;
+
+  const recentRuns = (runsResult.data || []) as ProductSyncRun[];
+  const latestRunId = recentRuns[0]?.run_id;
+  const latestRunCounts = recentRuns
+    .filter((run) => run.run_id === latestRunId)
+    .reduce<Record<string, number>>((counts, run) => {
+      counts[run.status] = (counts[run.status] || 0) + 1;
+      return counts;
+    }, {});
+
+  return {
+    configured,
+    migrationReady: true,
+    lastRun: recentRuns[0] || null,
+    latestRunCounts,
+    recentRuns: recentRuns.slice(0, 20),
+    recentErrors: recentRuns.filter((run) => run.status !== "success").slice(0, 10),
+    deadLetters: deadLettersResult.error ? [] : ((deadLettersResult.data || []) as ProductSyncDeadLetter[]),
+  };
+});
 export const getSuggestionsForAdmin = cache(async () => {
   const supabase = createSupabaseAdminClient();
   if (!supabase) return mockSuggestions;

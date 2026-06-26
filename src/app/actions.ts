@@ -7,10 +7,14 @@ import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/sup
 import { isApprovedAdmin } from "@/lib/auth";
 import { getAllowedAdminEmails } from "@/lib/config";
 import { createEtsyDraftFromProduct, etsyDraftRequirements } from "@/lib/etsy-drafts";
+import { createOrSyncEtsyListing, etsyListingRequirements } from "@/lib/etsy-listings";
 import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { syncEtsyListings } from "@/lib/etsy-sync";
-import type { Product } from "@/lib/types";
+import { importProductsCsvText } from "@/lib/product-import";
+import type { Product, ProductMedia } from "@/lib/types";
 import { optionalTextFromForm, slugify, textFromForm } from "@/lib/utils";
+import { runProductCommandSync } from "../../scripts/lib/product-command-sync.mjs";
+import { GoogleSheetsClient } from "../../scripts/lib/google-sheets-client.mjs";
 
 export type ActionState = {
   ok: boolean;
@@ -76,6 +80,7 @@ export type AiMarketResearchState = ActionState & {
 
 export type EtsyDraftState = ActionState & {
   listingUrl?: string;
+  uploadedImages?: number;
 };
 
 export type CustomPrintRequestState = ActionState;
@@ -523,6 +528,7 @@ function parseProductForm(formData: FormData) {
     etsy_url: textFromForm(formData, "etsy_url"),
     main_image_url: textFromForm(formData, "main_image_url"),
     video_url: textFromForm(formData, "video_url"),
+    drive_media_folder_url: textFromForm(formData, "drive_media_folder_url"),
     materials: textFromForm(formData, "materials"),
     dimensions: textFromForm(formData, "dimensions"),
     customization_notes: textFromForm(formData, "customization_notes"),
@@ -701,6 +707,26 @@ async function sendPrintRequestEmail({
   });
 }
 
+
+export async function runProductCommandCenterDryRun(state: ActionState): Promise<ActionState> {
+  void state;
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  try {
+    const result = await runProductCommandSync({ dryRun: true });
+    const issueCount = result.blocked + result.conflicts + result.errors.length;
+    const summary = [
+      `Dry run complete: ${result.created} create, ${result.updated} update`,
+      `${result.blocked} blocked`,
+      `${result.conflicts} conflicts`,
+      `${result.errors.length} system errors`,
+    ].join("; ");
+
+    return issueCount ? failure(summary) : success(summary);
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Product command-center dry run failed.");
+  }
+}
 export async function createProduct(_: ActionState, formData: FormData): Promise<ActionState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
@@ -734,6 +760,7 @@ export async function updateProduct(_: ActionState, formData: FormData): Promise
   const supabase = createSupabaseAdminClient();
   if (!supabase) return failure("Supabase service role key is required for admin product management.");
 
+  const { data: existingProduct } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
   const { error } = await supabase
     .from("products")
     .update({ ...parsed.data, updated_at: new Date().toISOString() })
@@ -741,20 +768,36 @@ export async function updateProduct(_: ActionState, formData: FormData): Promise
 
   if (error) return failure(error.message);
   await syncProductMedia(id, formData, supabase);
+  if (existingProduct?.etsy_listing_id && process.env.ETSY_AUTO_SYNC_ON_PRODUCT_SAVE === "true") {
+    await syncProductToAttachedEtsyListing(id, false).catch(() => null);
+  }
 
   revalidatePath("/");
   revalidatePath("/products");
   revalidatePath("/admin");
   redirect("/admin");
 }
-
-export async function deleteProduct(formData: FormData) {
+export async function archiveProduct(formData: FormData) {
   if (!(await assertAdmin())) return;
 
   const id = textFromForm(formData, "id");
   const supabase = createSupabaseAdminClient();
   if (id && supabase) {
-    await supabase.from("products").delete().eq("id", id);
+    const archiveResult = await supabase
+      .from("products")
+      .update({
+        active: false,
+        featured: false,
+        workflow_status: "Archived",
+        archived_at: new Date().toISOString(),
+        last_sync_source: "website_admin",
+      })
+      .eq("id", id);
+
+    // Keep archiving safe while the command-center migration is being deployed.
+    if (archiveResult.error?.message.includes("workflow_status") || archiveResult.error?.message.includes("archived_at")) {
+      await supabase.from("products").update({ active: false, featured: false }).eq("id", id);
+    }
     revalidatePath("/");
     revalidatePath("/products");
     revalidatePath("/admin");
@@ -1273,4 +1316,167 @@ function todayInNewYork() {
   const month = parts.find((part) => part.type === "month")?.value;
   const day = parts.find((part) => part.type === "day")?.value;
   return `${year}-${month}-${day}`;
+}
+
+export async function syncProductToEtsyListing(state: EtsyDraftState, formData: FormData): Promise<EtsyDraftState> {
+  void state;
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+  const productId = textFromForm(formData, "product_id");
+  if (!productId) return failure("Missing product id.");
+  return syncProductToAttachedEtsyListing(productId, formData.get("publish") === "on");
+}
+
+async function syncProductToAttachedEtsyListing(productId: string, publish: boolean): Promise<EtsyDraftState> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required.");
+
+  const [{ data, error }, mediaResult] = await Promise.all([
+    supabase.from("products").select("*").eq("id", productId).maybeSingle(),
+    supabase.from("product_media").select("*").eq("product_id", productId).order("sort_order", { ascending: true }),
+  ]);
+  if (error) return failure(error.message);
+  if (!data) return failure("Product not found.");
+
+  const product = data as Product;
+  const media = (mediaResult.data || []) as ProductMedia[];
+  const [etsyToken, etsySettings] = await Promise.all([getValidEtsyOAuthToken(), getEffectiveEtsyRuntimeSettings()]);
+  const missing = etsyListingRequirements(product, { hasOAuthToken: Boolean(etsyToken?.access_token), settings: etsySettings });
+  if (missing.length) return failure(`Etsy sync needs these settings first: ${missing.join(", ")}.`);
+
+  try {
+    const result = await createOrSyncEtsyListing({
+      apiKey: process.env.ETSY_API_KEY!,
+      accessToken: etsyToken?.access_token || process.env.ETSY_ACCESS_TOKEN!,
+      settings: etsySettings,
+      product,
+      media,
+      publish,
+    });
+
+    await supabase.from("products").update({
+      etsy_listing_id: result.listingId,
+      etsy_url: result.url,
+      etsy_state: result.state,
+      updated_at: new Date().toISOString(),
+    }).eq("id", product.id);
+
+    revalidatePath("/");
+    revalidatePath("/products");
+    revalidatePath("/admin");
+    revalidatePath("/admin/etsy");
+    revalidatePath(`/admin/products/${product.id}`);
+
+    return {
+      ok: true,
+      message: `${publish ? "Published/synced" : "Synced"} Etsy listing ${result.listingId}. Uploaded ${result.uploadedImages} new image${result.uploadedImages === 1 ? "" : "s"}.`,
+      listingUrl: result.url,
+      uploadedImages: result.uploadedImages,
+    };
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Could not sync Etsy listing.");
+  }
+}
+export async function importProductsFromCsv(state: ActionState, formData: FormData): Promise<ActionState> {
+  void state;
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  const file = formData.get("product_import_file");
+  if (!(file instanceof File) || file.size === 0) return failure("Upload a CSV file exported from the product import template.");
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required for product import.");
+
+  const result = await importProductsCsvText(await file.text(), supabase);
+  const spreadsheetId = optionalTextFromForm(formData, "source_spreadsheet_id");
+  const sheetName = optionalTextFromForm(formData, "source_sheet_name");
+  let writebackMessage = "";
+  if (spreadsheetId && sheetName && result.writebacks.length) {
+    try {
+      const written = await writeProductImportResultsToSheet(spreadsheetId, sheetName, result.writebacks);
+      writebackMessage = written ? ` Wrote ${written} row${written === 1 ? "" : "s"} back to ${sheetName}.` : ` No Sheet writeback columns were found on ${sheetName}.`;
+    } catch (error) {
+      writebackMessage = ` Sheet writeback failed: ${error instanceof Error ? error.message : "Unknown Sheets error"}.`;
+    }
+  }
+
+  revalidatePath("/");
+  revalidatePath("/products");
+  revalidatePath("/admin");
+
+  const summary = `Import complete: ${result.created} created, ${result.updated} updated, ${result.mediaImported} Drive media folder${result.mediaImported === 1 ? "" : "s"} imported.${writebackMessage}`;
+  return result.errors.length
+    ? failure(`${summary} ${result.errors.slice(0, 5).join(" ")}${result.errors.length > 5 ? ` (${result.errors.length - 5} more errors)` : ""}`)
+    : success(summary);
+}
+
+async function writeProductImportResultsToSheet(
+  spreadsheetId: string,
+  sheetName: string,
+  writebacks: Awaited<ReturnType<typeof importProductsCsvText>>["writebacks"],
+) {
+  const sheets = new GoogleSheetsClient({ spreadsheetId });
+  const quotedSheetName = quoteSheetName(sheetName);
+  const headerRows = await sheets.getValues(`${quotedSheetName}!1:1`);
+  const headers = (headerRows[0] || []).map((value: unknown) => normalizeSheetHeader(String(value || "")));
+  const outputHeaders = ["import_status", "product_id", "site_url", "media_status", "ai_suggested_price", "ai_price_notes", "imported_at"];
+  let rowsWithWriteback = 0;
+  const ranges = writebacks.flatMap((writeback) => {
+    const valuesByHeader: Record<string, string> = {
+      import_status: writeback.status,
+      product_id: writeback.productId,
+      site_url: writeback.siteUrl,
+      media_status: writeback.mediaStatus,
+      ai_suggested_price: writeback.aiSuggestedPrice,
+      ai_price_notes: writeback.aiPriceNotes,
+      imported_at: writeback.importedAt,
+    };
+
+    const rowRanges = outputHeaders.flatMap((header) => {
+      const columnIndex = headers.indexOf(header);
+      if (columnIndex < 0) return [];
+      return [{ range: `${quotedSheetName}!${columnLetter(columnIndex + 1)}${writeback.rowNumber}`, values: [[valuesByHeader[header] || ""]] }];
+    });
+    if (rowRanges.length) rowsWithWriteback++;
+    return rowRanges;
+  });
+
+  await sheets.batch(ranges);
+  return rowsWithWriteback;
+}
+
+function quoteSheetName(sheetName: string) {
+  return `'${sheetName.replaceAll("'", "''")}'`;
+}
+
+function normalizeSheetHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function columnLetter(index: number) {
+  let column = "";
+  while (index > 0) {
+    const remainder = (index - 1) % 26;
+    column = String.fromCharCode(65 + remainder) + column;
+    index = Math.floor((index - 1) / 26);
+  }
+  return column;
+}
+
+export async function deactivateAllProducts(state: ActionState): Promise<ActionState> {
+  void state;
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required.");
+
+  const { error } = await supabase
+    .from("products")
+    .update({ active: false, featured: false, updated_at: new Date().toISOString() })
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) return failure(error.message);
+
+  revalidatePath("/");
+  revalidatePath("/products");
+  revalidatePath("/admin");
+  return success("All products are now inactive and unfeatured.");
 }

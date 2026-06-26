@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { createProduct, updateProduct } from "@/app/actions";
@@ -54,6 +55,20 @@ export function ProductForm({ galleryMediaUrls = [], product }: { galleryMediaUr
             </div>
           </div>
           <Field defaultValue={product?.video_url} error={state.errors?.video_url} label="Video URL" name="video_url" placeholder="YouTube, TikTok, Instagram, or direct video URL" />
+          <Field
+            defaultValue={product?.drive_media_folder_url}
+            error={state.errors?.drive_media_folder_url}
+            label="Drive media folder URL"
+            name="drive_media_folder_url"
+            placeholder="https://drive.google.com/drive/folders/..."
+          />
+          {product?.media_status || product?.sheet_synced_at ? (
+            <div className="rounded-md border border-white/10 bg-zinc-950 p-4 text-sm leading-6 text-zinc-300">
+              <p><span className="font-bold text-zinc-100">Media status:</span> {product.media_status || "Unknown"}</p>
+              {product.sheet_synced_at ? <p><span className="font-bold text-zinc-100">Last sheet sync:</span> {new Date(product.sheet_synced_at).toLocaleString()}</p> : null}
+              {product.sync_version ? <p><span className="font-bold text-zinc-100">Sync version:</span> {product.sync_version}</p> : null}
+            </div>
+          ) : null}
           <section className="grid gap-3 rounded-lg border border-white/10 bg-zinc-950 p-5">
             <div>
               <h2 className="text-lg font-black text-zinc-50">Listing media gallery</h2>
@@ -71,6 +86,19 @@ export function ProductForm({ galleryMediaUrls = [], product }: { galleryMediaUr
             <div className="flex">
               <MediaUpload append targetInputId="gallery_media_urls" />
             </div>
+            {galleryMediaUrls.length ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {galleryMediaUrls.slice(0, 6).map((url) => (
+                  <div className="aspect-square overflow-hidden rounded-md border border-white/10 bg-zinc-900" key={url}>
+                    {/\.(mp4|mov|webm|m4v)(\?|$)/i.test(url) ? (
+                      <video className="h-full w-full object-cover" controls src={url} />
+                    ) : (
+                      <img alt="Imported product media preview" className="h-full w-full object-cover" src={url} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </section>
           <div className="grid gap-5 sm:grid-cols-2">
             <TextArea defaultValue={product?.materials} error={state.errors?.materials} label="Materials" name="materials" rows={4} />
@@ -161,7 +189,7 @@ export function ProductForm({ galleryMediaUrls = [], product }: { galleryMediaUr
               <input defaultChecked={product?.featured ?? false} name="featured" type="checkbox" /> Featured
             </label>
             <label className="inline-flex items-center gap-2">
-              <input defaultChecked={product?.active ?? true} name="active" type="checkbox" /> Active
+              <input defaultChecked={product?.active ?? false} name="active" type="checkbox" /> Active
             </label>
           </div>
           {state.message ? (

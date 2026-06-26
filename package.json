@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test --test-isolation=none scripts/lib/*.test.mjs",
+    "sync:products": "node scripts/sync-product-command-center.mjs",
+    "sync:products:dry": "node scripts/sync-product-command-center.mjs --dry-run",
+    "setup:product-tabs": "node scripts/setup-product-command-center-tabs.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+﻿import { notFound } from "next/navigation";
 import { ProductForm } from "@/components/product-form";
+import { EtsyListingSyncPanel } from "@/components/etsy-listing-sync-panel";
 import { requireAdmin } from "@/lib/auth";
 import { getProductByIdForAdmin, getProductMedia } from "@/lib/data";
 
@@ -22,7 +23,10 @@ export default async function EditProductPage({ params }: Props) {
         <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-200">Admin</p>
         <h1 className="mt-2 text-4xl font-black text-zinc-50">Edit product</h1>
       </div>
-      <ProductForm galleryMediaUrls={media.map((item) => item.url)} product={product} />
+      <div className="grid gap-5">
+        <EtsyListingSyncPanel product={product} />
+        <ProductForm galleryMediaUrls={media.map((item) => item.url)} product={product} />
+      </div>
     </section>
   );
 }
