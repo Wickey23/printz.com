@@ -1,0 +1,182 @@
+export type ImportTemplateKey = "full_product" | "quick_product" | "media_update" | "pricing_update" | "rights_update";
+
+type ImportTemplate = {
+  key: ImportTemplateKey;
+  label: string;
+  description: string;
+  filename: string;
+  headers: string[];
+  example: string[];
+};
+
+export const importTemplates: ImportTemplate[] = [
+  {
+    key: "full_product",
+    label: "Full product import",
+    description: "Create new products or update existing products with listing copy, media, price, rights, and Etsy fields.",
+    filename: "printz-full-product-import",
+    headers: [
+      "name",
+      "slug",
+      "short_description",
+      "full_description",
+      "category",
+      "price",
+      "estimated_grams",
+      "estimated_print_hours",
+      "tags",
+      "materials",
+      "dimensions",
+      "color_options",
+      "size_options",
+      "finish_options",
+      "processing_time",
+      "care_instructions",
+      "customization_notes",
+      "personalization_enabled",
+      "personalization_prompt",
+      "source_url",
+      "license_notes",
+      "drive_media_folder_url",
+      "main_image_url",
+      "gallery_media_urls",
+      "video_url",
+      "etsy_url",
+      "featured",
+      "active",
+      "import_status",
+      "product_id",
+      "site_url",
+      "media_status",
+      "ai_suggested_price",
+      "ai_price_notes",
+      "imported_at",
+    ],
+    example: [
+      "Custom Desk Organizer",
+      "custom-desk-organizer",
+      "Personalized 3D printed desk organizer for pens, notes, and everyday essentials.",
+      "A clean, made-to-order desk organizer with optional name or initials. Add color and size notes before publishing.",
+      "Desk Accessories",
+      "",
+      "180",
+      "5",
+      "desk organizer, 3d printed, custom gift",
+      "PLA, PLA+",
+      "Approx. 7 x 3 x 3 in",
+      "Black, White, Gray, Custom Color",
+      "Standard, Large",
+      "Matte, Silk",
+      "Made to order in 2-4 business days",
+      "Keep away from high heat. Clean gently with a dry cloth.",
+      "Buyer can request name, initials, color, and layout adjustments.",
+      "TRUE",
+      "Enter the name or initials you want added.",
+      "",
+      "Original PRINTZ design or approved commercial-use model.",
+      "https://drive.google.com/drive/folders/EXAMPLE",
+      "",
+      "",
+      "",
+      "",
+      "FALSE",
+      "FALSE",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ],
+  },
+  {
+    key: "quick_product",
+    label: "Quick product draft",
+    description: "Fastest way to stage new inactive products. Leave price blank to generate a draft price from grams and print hours.",
+    filename: "printz-quick-product-draft",
+    headers: [
+      "name",
+      "slug",
+      "short_description",
+      "category",
+      "estimated_grams",
+      "estimated_print_hours",
+      "materials",
+      "dimensions",
+      "color_options",
+      "source_url",
+      "license_notes",
+      "drive_media_folder_url",
+      "tags",
+      "active",
+      "import_status",
+      "product_id",
+      "site_url",
+      "media_status",
+      "ai_suggested_price",
+      "ai_price_notes",
+      "imported_at",
+    ],
+    example: [
+      "Personalized Pet Food Scoop",
+      "personalized-pet-food-scoop",
+      "Customizable pet food scoop for dry kibble, treat bins, and pantry pet storage.",
+      "Pet Supplies",
+      "60",
+      "2",
+      "PETG or PLA",
+      "Confirm scoop capacity before listing.",
+      "White, Black, Gray, Beige, Blue, Pink, Green",
+      "https://makerworld.com/en/models/624628-pet-food-scoop-kibble-scoop?from=search#profileId-549003",
+      "NEEDS REVIEW: verify commercial-use license and attribution before activating.",
+      "https://drive.google.com/drive/folders/EXAMPLE",
+      "pet food scoop personalized, dog food scoop, 3d printed pet",
+      "FALSE",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ],
+  },
+  {
+    key: "media_update",
+    label: "Media update",
+    description: "Bulk attach Drive media folders, direct galleries, main images, and videos to existing products.",
+    filename: "printz-media-update",
+    headers: ["product_id", "slug", "name", "drive_media_folder_url", "main_image_url", "gallery_media_urls", "video_url", "import_status", "site_url", "media_status", "imported_at"],
+    example: ["", "personalized-pet-food-scoop", "Personalized Pet Food Scoop", "https://drive.google.com/drive/folders/EXAMPLE", "", "", "", "", "", "", ""],
+  },
+  {
+    key: "pricing_update",
+    label: "Pricing update",
+    description: "Bulk update prices, or leave price blank and use grams/hours to generate draft pricing and write it back.",
+    filename: "printz-pricing-update",
+    headers: ["product_id", "slug", "name", "price", "estimated_grams", "estimated_print_hours", "import_status", "site_url", "ai_suggested_price", "ai_price_notes", "imported_at"],
+    example: ["", "ripple-bloom-vase", "Ripple Bloom Vase", "", "180", "6.5", "", "", "", "", ""],
+  },
+  {
+    key: "rights_update",
+    label: "Rights and licensing update",
+    description: "Bulk update source URLs and license notes for existing products before activating or Etsy publishing.",
+    filename: "printz-rights-licensing-update",
+    headers: ["product_id", "slug", "name", "source_url", "license_notes", "active", "import_status", "site_url", "imported_at"],
+    example: ["", "custom-alphabet-cookie-cutter-set", "Custom Alphabet Cookie Cutter Set", "https://makerworld.com/en/models/1743865-cookie-cutter-letters-alphabet?from=search#profileId-1853389", "NEEDS REVIEW: add exact creator, license URL, and attribution text before activating.", "FALSE", "", "", ""],
+  },
+];
+
+export function getImportTemplate(key: string | null | undefined) {
+  return importTemplates.find((template) => template.key === key) || importTemplates[0];
+}
+
+export function importTemplateCsv(key: string | null | undefined) {
+  const template = getImportTemplate(key);
+  return [template.headers, template.example].map((row) => row.map(csvCell).join(",")).join("\n") + "\n";
+}
+
+function csvCell(value: string) {
+  return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}

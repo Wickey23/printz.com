@@ -93,7 +93,7 @@ function buildImportPreview(csvText: string): ImportPreview | null {
     activeRows: records.filter((record) => getValue(record, ["active", "active on site"]).toLowerCase() === "true").length,
     mediaFolderRows: records.filter((record) => getValue(record, ["drive media folder url", "media folder url", "drive folder"])).length,
     missingNameRows: records.filter((record) => !getValue(record, ["name", "product name", "title"])).length,
-    missingLicenseRows: records.filter((record) => !getValue(record, ["license type", "license url", "rights status"])).length,
+    missingLicenseRows: records.filter((record) => !getValue(record, ["license notes", "license type", "license url", "rights status"])).length,
   };
 }
 

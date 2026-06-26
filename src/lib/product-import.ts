@@ -67,34 +67,41 @@ export async function importProductsCsvText(input: string, supabase: SupabaseAdm
 
   for (const item of products) {
     const raw = item.values;
-    const name = raw.name || raw.product_name || "";
+    const existing = await findExistingProduct(raw, supabase);
+    if (existing.error) {
+      errors.push(`Row ${item.rowNumber}: ${existing.error.message}`);
+      continue;
+    }
+
+    const existingProduct = existing.data as Product | null | undefined;
+    const name = importValue(raw, ["name", "product_name", "title"], existingProduct?.name || "");
     const pricing = suggestImportPrice(raw);
     const parsed = productSchema.safeParse({
       name,
-      slug: raw.slug || slugify(name),
-      short_description: raw.short_description || raw.description || name,
-      full_description: raw.full_description || raw.description || "",
-      category: raw.category || "Functional Prints",
-      price: raw.price || pricing.price || "",
-      etsy_url: raw.etsy_url || "",
-      main_image_url: raw.main_image_url || "",
-      video_url: raw.video_url || "",
-      drive_media_folder_url: raw.drive_media_folder_url || raw.drive_folder_url || "",
-      materials: raw.materials || "",
-      dimensions: raw.dimensions || "",
-      customization_notes: raw.customization_notes || "",
-      personalization_enabled: parseImportBoolean(raw.personalization_enabled),
-      personalization_prompt: raw.personalization_prompt || "",
-      color_options: raw.color_options || raw.colors || "",
-      size_options: raw.size_options || raw.sizes || "",
-      finish_options: raw.finish_options || raw.finishes || "",
-      processing_time: raw.processing_time || "",
-      care_instructions: raw.care_instructions || "",
-      source_url: raw.source_url || raw.makerworld_url || "",
-      license_notes: raw.license_notes || raw.license || "",
-      tags: raw.tags || "",
-      featured: parseImportBoolean(raw.featured),
-      active: parseImportBoolean(raw.active),
+      slug: importValue(raw, ["slug"], existingProduct?.slug || slugify(name)),
+      short_description: importValue(raw, ["short_description", "description"], existingProduct?.short_description || name),
+      full_description: importValue(raw, ["full_description", "description"], existingProduct?.full_description || ""),
+      category: importValue(raw, ["category"], existingProduct?.category || "Functional Prints"),
+      price: raw.price || pricing.price || valueToString(existingProduct?.price),
+      etsy_url: importValue(raw, ["etsy_url"], existingProduct?.etsy_url || ""),
+      main_image_url: importValue(raw, ["main_image_url"], existingProduct?.main_image_url || ""),
+      video_url: importValue(raw, ["video_url"], existingProduct?.video_url || ""),
+      drive_media_folder_url: importValue(raw, ["drive_media_folder_url", "drive_folder_url"], existingProduct?.drive_media_folder_url || ""),
+      materials: importValue(raw, ["materials"], existingProduct?.materials || ""),
+      dimensions: importValue(raw, ["dimensions"], existingProduct?.dimensions || ""),
+      customization_notes: importValue(raw, ["customization_notes"], existingProduct?.customization_notes || ""),
+      personalization_enabled: hasImportValue(raw, "personalization_enabled") ? parseImportBoolean(raw.personalization_enabled) : Boolean(existingProduct?.personalization_enabled),
+      personalization_prompt: importValue(raw, ["personalization_prompt"], existingProduct?.personalization_prompt || ""),
+      color_options: importValue(raw, ["color_options", "colors"], listToString(existingProduct?.color_options)),
+      size_options: importValue(raw, ["size_options", "sizes"], listToString(existingProduct?.size_options)),
+      finish_options: importValue(raw, ["finish_options", "finishes"], listToString(existingProduct?.finish_options)),
+      processing_time: importValue(raw, ["processing_time"], existingProduct?.processing_time || ""),
+      care_instructions: importValue(raw, ["care_instructions"], existingProduct?.care_instructions || ""),
+      source_url: importValue(raw, ["source_url", "makerworld_url"], existingProduct?.source_url || ""),
+      license_notes: importValue(raw, ["license_notes", "license"], existingProduct?.license_notes || ""),
+      tags: importValue(raw, ["tags"], listToString(existingProduct?.tags)),
+      featured: hasImportValue(raw, "featured") ? parseImportBoolean(raw.featured) : Boolean(existingProduct?.featured),
+      active: hasImportValue(raw, "active") ? parseImportBoolean(raw.active) : Boolean(existingProduct?.active),
     });
 
     if (!parsed.success) {
@@ -102,14 +109,8 @@ export async function importProductsCsvText(input: string, supabase: SupabaseAdm
       continue;
     }
 
-    const existing = await fromTable(supabase, "products").select("id").eq("slug", parsed.data.slug).maybeSingle();
-    if (existing.error) {
-      errors.push(`Row ${item.rowNumber}: ${existing.error.message}`);
-      continue;
-    }
-
     const payload = { ...parsed.data, active: parsed.data.active === true, updated_at: new Date().toISOString() };
-    const existingId = (existing.data as { id?: string } | null | undefined)?.id;
+    const existingId = existingProduct?.id;
     const result = existingId
       ? await fromTable(supabase, "products").update(payload).eq("id", existingId).select("*").single()
       : await fromTable(supabase, "products").insert(payload).select("*").single();
@@ -126,19 +127,21 @@ export async function importProductsCsvText(input: string, supabase: SupabaseAdm
     const directGalleryImported = await replaceImportedGalleryMedia((result.data as { id: string }).id, raw.gallery_media_urls || raw.gallery_urls || "", supabase);
     if (directGalleryImported) mediaStatus = "Imported direct gallery URLs.";
 
-    const imported = await importDriveMediaForProduct(result.data as Product, supabase).catch((error) => {
+    const savedProduct = result.data as Product;
+    const shouldImportDriveMedia =
+      hasImportValue(raw, "drive_media_folder_url") || hasImportValue(raw, "drive_folder_url") || (!existingId && Boolean(savedProduct.drive_media_folder_url));
+    const imported = shouldImportDriveMedia ? await importDriveMediaForProduct(savedProduct, supabase).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`Row ${item.rowNumber}: saved product, but Drive media import failed: ${message}`);
       mediaStatus = `Drive media error: ${message}`;
       return false;
-    });
+    }) : false;
     if (imported) {
       mediaImported++;
       mediaStatus = "Imported Drive folder media.";
     }
 
     const importedAt = new Date().toISOString();
-    const savedProduct = result.data as Product;
     writebacks.push({
       rowNumber: item.rowNumber,
       slug: savedProduct.slug,
@@ -175,6 +178,39 @@ async function importDriveMediaForProduct(product: Product, supabase: SupabaseAd
     report: { mediaUploads: 0, mediaSkipped: 0 },
   });
   return true;
+}
+
+async function findExistingProduct(raw: Record<string, string>, supabase: SupabaseAdmin) {
+  const productId = raw.product_id?.trim();
+  if (productId) {
+    return fromTable(supabase, "products").select("*").eq("id", productId).maybeSingle();
+  }
+
+  const slug = raw.slug?.trim();
+  if (slug) {
+    return fromTable(supabase, "products").select("*").eq("slug", slug).maybeSingle();
+  }
+
+  return { data: null, error: null } satisfies QueryResult;
+}
+
+function importValue(raw: Record<string, string>, keys: string[], fallback: string) {
+  for (const key of keys) {
+    if (hasImportValue(raw, key)) return raw[key].trim();
+  }
+  return fallback;
+}
+
+function hasImportValue(raw: Record<string, string>, key: string) {
+  return Object.prototype.hasOwnProperty.call(raw, key) && raw[key].trim() !== "";
+}
+
+function listToString(value: string[] | null | undefined) {
+  return Array.isArray(value) ? value.join(", ") : "";
+}
+
+function valueToString(value: string | number | null | undefined) {
+  return value === null || value === undefined ? "" : String(value);
 }
 
 function suggestImportPrice(raw: Record<string, string>) {

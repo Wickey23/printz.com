@@ -38,6 +38,9 @@ export default async function AdminPage() {
           <Link className="inline-flex h-10 items-center rounded-md border border-white/10 px-4 text-sm font-bold text-zinc-200" href="/admin/print-options">
             Stock options
           </Link>
+          <Link className="inline-flex h-10 items-center rounded-md border border-white/10 px-4 text-sm font-bold text-zinc-200" href="/admin/imports">
+            Imports
+          </Link>
           <Link className="inline-flex h-10 items-center rounded-md bg-amber-300 px-4 text-sm font-bold text-zinc-950" href="/admin/products/new">
             Add product
           </Link>
