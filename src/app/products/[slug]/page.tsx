@@ -12,6 +12,8 @@ type Props = {
   params: Promise<{ slug: string }>;
 };
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
@@ -203,7 +205,13 @@ function buildProductGallery(mainImageUrl: string | null, media: ProductMedia[])
     ...media.map((item) => ({ media_type: item.media_type, url: item.url })),
   ];
 
-  return items.filter((item, index, all) => item.url && all.findIndex((candidate) => candidate.url === item.url) === index);
+  return items.filter((item, index, all) => isRenderableMediaUrl(item.url) && all.findIndex((candidate) => candidate.url === item.url) === index);
+}
+
+function isRenderableMediaUrl(url: string) {
+  if (!url) return false;
+  if (/drive\.google\.com\/drive\/folders\//i.test(url)) return false;
+  return /^https?:\/\//i.test(url) || url.startsWith("/");
 }
 
 function Detail({ title, value }: { title: string; value: string | null }) {

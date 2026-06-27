@@ -8,16 +8,17 @@ export function ProductCard({ media = [], product }: { media?: ProductMedia[]; p
   const isDigital = product.category === "Digital Products" || product.tags?.some((tag) => tag.toLowerCase().includes("digital"));
   const requestOnly = isRequestOnlyProduct(product);
   const gallery = productCardGallery(product, media);
+  const heroImage = gallery.find((item) => item.type === "image")?.url;
 
   return (
     <article className="group overflow-hidden rounded-lg border border-white/10 bg-zinc-900/70 transition duration-300 hover:-translate-y-1 hover:border-amber-300/40">
       <Link href={`/products/${product.slug}`}>
         <div className="relative aspect-[4/3] overflow-hidden bg-zinc-800">
-          {product.main_image_url ? (
+          {heroImage ? (
             <img
               alt={product.name}
               className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-              src={product.main_image_url}
+              src={heroImage}
             />
           ) : (
             <div className="grid h-full place-items-center text-zinc-500">
@@ -91,5 +92,11 @@ function productCardGallery(product: Product, media: ProductMedia[]) {
     ...media.map((item) => ({ type: item.media_type, url: item.url })),
   ];
 
-  return items.filter((item, index, all) => item.url && all.findIndex((candidate) => candidate.url === item.url) === index);
+  return items.filter((item, index, all) => isRenderableMediaUrl(item.url) && all.findIndex((candidate) => candidate.url === item.url) === index);
+}
+
+function isRenderableMediaUrl(url: string) {
+  if (!url) return false;
+  if (/drive\.google\.com\/drive\/folders\//i.test(url)) return false;
+  return /^https?:\/\//i.test(url) || url.startsWith("/");
 }

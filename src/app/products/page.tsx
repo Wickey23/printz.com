@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   description: "Browse 3D printed products, digital downloads, and source-model prints you can request from PRINTZ.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function ProductsPage() {
   const products = await getProducts();
   const mediaByProductId = await getProductMediaForProducts(products.map((product) => product.id));

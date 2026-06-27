@@ -6,6 +6,8 @@ import { ProductCard } from "@/components/product-card";
 import { categories, siteConfig } from "@/lib/config";
 import { getFeaturedProducts, getProductMediaForProducts } from "@/lib/data";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const featuredProducts = await getFeaturedProducts();
   const mediaByProductId = await getProductMediaForProducts(featuredProducts.map((product) => product.id));
