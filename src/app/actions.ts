@@ -1097,8 +1097,6 @@ export async function generateAiListing(
 export async function autofillProductEtsyFields(_: ActionState, formData: FormData): Promise<ActionState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
-  if (!getOpenAiApiKeys().length) return failure(openAiKeyMissingMessage());
-
   const id = textFromForm(formData, "product_id");
   if (!id) return failure("Missing product id.");
 
@@ -1133,20 +1131,10 @@ export async function autofillProductEtsyFields(_: ActionState, formData: FormDa
     `Sheet research JSON: ${JSON.stringify(research || {})}`,
   ].join("\n");
 
-  try {
-    const result = await createOpenAiResponse({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      fallbackModel: "gpt-4.1-mini",
-      input: prompt,
-      max_output_tokens: 1800,
-    });
-    const text = typeof result.output_text === "string" ? result.output_text : extractResponseText(result) || "";
-    const draft = parseEtsyAutofillDraft(text);
-    if (!draft) return failure("The AI autofill response could not be parsed. Try again.");
-
+  const applyDraft = async (draft: EtsyAutofillDraft, mode: "AI" | "Local fallback") => {
     const patch = buildEtsyAutofillPatch(product, draft);
     if (!Object.keys(patch).length) {
-      return success("AI checked this product, but no missing Etsy readiness fields needed changes.");
+      return success(`${mode} checked this product, but no missing Etsy readiness fields needed changes.`);
     }
 
     const { error: updateError } = await supabase
@@ -1161,9 +1149,27 @@ export async function autofillProductEtsyFields(_: ActionState, formData: FormDa
     revalidatePath(`/admin/products/${product.id}`);
     if (product.slug) revalidatePath(`/products/${product.slug}`);
 
-    return success(`AI filled Etsy fields: ${Object.keys(patch).filter((key) => key !== "updated_at").join(", ")}.`);
-  } catch (error) {
-    return failure(error instanceof Error ? error.message : "AI Etsy autofill failed.");
+    return success(`${mode} filled Etsy fields: ${Object.keys(patch).filter((key) => key !== "updated_at").join(", ")}.`);
+  };
+
+  if (!getOpenAiApiKeys().length) {
+    return applyDraft(buildLocalEtsyAutofillDraft(product, research), "Local fallback");
+  }
+
+  try {
+    const result = await createOpenAiResponse({
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      fallbackModel: "gpt-4.1-mini",
+      input: prompt,
+      max_output_tokens: 1800,
+    });
+    const text = typeof result.output_text === "string" ? result.output_text : extractResponseText(result) || "";
+    const draft = parseEtsyAutofillDraft(text);
+    if (!draft) return failure("The AI autofill response could not be parsed. Try again.");
+
+    return applyDraft(draft, "AI");
+  } catch {
+    return applyDraft(buildLocalEtsyAutofillDraft(product, research), "Local fallback");
   }
 }
 
@@ -1388,6 +1394,75 @@ function parseEtsyAutofillDraft(text: string): EtsyAutofillDraft | null {
   }
 }
 
+function buildLocalEtsyAutofillDraft(product: Product, research: Record<string, unknown> | null): EtsyAutofillDraft {
+  const name = product.name;
+  const category = product.category || researchText(research, "Category") || "3D printed product";
+  const primaryKeyword = researchText(research, "Primary Keyword") || (product.tags || [])[0] || name;
+  const launchNotes = researchText(research, "Launch Notes");
+  const sourceUrl = product.source_url || researchText(research, "Source URL");
+  const suggestedPrice =
+    product.price ||
+    numberFromText(researchText(research, "Suggested Price")) ||
+    numberFromText(researchText(research, "Price")) ||
+    defaultPriceForCategory(category);
+  const materials = product.materials || researchText(research, "Materials") || materialForProduct(name, category);
+  const dimensions =
+    product.dimensions ||
+    researchText(research, "Dimensions") ||
+    "Custom sizes available; confirm final dimensions before ordering.";
+  const colors =
+    normalizeStringArray([...(product.color_options || []), ...splitList(researchText(research, "Color Options"))]).join(", ") ||
+    "White, Black, Red, Pink, Blue, Green";
+  const sizes =
+    normalizeStringArray([...(product.size_options || []), ...splitList(researchText(research, "Size Options"))]).join(", ") ||
+    "Standard";
+  const finishes =
+    normalizeStringArray([...(product.finish_options || []), ...splitList(researchText(research, "Finish Options"))]).join(", ") ||
+    "Standard";
+  const tags = localEtsyTags(product, research, primaryKeyword, category);
+  const buyerUseCase = buyerUseCaseForProduct(name, category, primaryKeyword);
+  const included = includedForProduct(name, category);
+  const buyerExpectation =
+    "Each item is made to order, so small layer lines and minor surface variation are normal for 3D printed products.";
+  const rightsNote = sourceUrl
+    ? "Source model/listing is attached for admin review. Confirm commercial-use rights, attribution, and any modification rules before publishing or selling."
+    : "No third-party source is attached. Confirm this is an original PRINTZ design or that commercial selling rights are documented before publishing.";
+  const customization = product.customization_notes || launchNotes || customizationForProduct(name, category);
+
+  return {
+    price: suggestedPrice.toFixed(2),
+    short_description:
+      product.short_description && product.short_description.length > 70
+        ? product.short_description
+        : `${name} for ${buyerUseCase}. Made to order with practical options for color, size, and finish.`,
+    full_description: [
+      `${name} is a made-to-order ${category.toLowerCase()} designed for ${buyerUseCase}.`,
+      `Included: ${included}`,
+      `Sizing: ${dimensions}`,
+      `Materials and finish: ${materials}. Available options include ${colors} colors, ${sizes} sizing, and ${finishes} finish choices.`,
+      `Customization: ${customization}`,
+      `Buyer expectations: ${buyerExpectation}`,
+      rightsNote,
+    ].join("\n\n"),
+    materials,
+    dimensions,
+    tags: tags.join(", "),
+    processing_time: product.processing_time || "Made to order in 2-4 business days",
+    care_instructions:
+      product.care_instructions ||
+      "Keep away from high heat and direct heat sources. Clean gently with a dry or slightly damp cloth. Do not put 3D printed items in a dishwasher unless the listing explicitly says they are dishwasher safe.",
+    customization_notes: customization,
+    personalization_enabled: Boolean(product.personalization_enabled || customization.toLowerCase().includes("personal")),
+    personalization_prompt:
+      product.personalization_prompt ||
+      "Enter personalization text, color preference, size request, or custom notes if offered.",
+    color_options: colors,
+    size_options: sizes,
+    finish_options: finishes,
+    license_notes: product.license_notes || researchText(research, "License Notes") || rightsNote,
+  };
+}
+
 function buildEtsyAutofillPatch(product: Product, draft: EtsyAutofillDraft) {
   const patch: Record<string, unknown> = {};
   const price = Number(String(draft.price).replace(/[^0-9.]/g, ""));
@@ -1420,6 +1495,90 @@ function isWeakText(value: string | null | undefined, minLength: number) {
   if (!text) return true;
   if (text.length < minLength) return true;
   return /\b(confirm|tbd|todo|unknown|add details|see details|price on request)\b/i.test(text);
+}
+
+function researchText(research: Record<string, unknown> | null, key: string) {
+  return String(research?.[key] || "").trim();
+}
+
+function numberFromText(value: string) {
+  const number = Number(value.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function splitList(value: string) {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function defaultPriceForCategory(category: string) {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("digital") || normalized.includes("printable")) return 4.99;
+  if (normalized.includes("decor") || normalized.includes("gift")) return 19.99;
+  if (normalized.includes("desk") || normalized.includes("organizer")) return 14.99;
+  return 12.99;
+}
+
+function materialForProduct(name: string, category: string) {
+  const text = `${name} ${category}`.toLowerCase();
+  if (text.includes("cookie") || text.includes("food")) {
+    return "PLA or PETG; use a food-contact-safe production process only if marketed for food use.";
+  }
+  if (text.includes("lamp")) return "PLA or PETG printed shell; lighting hardware only if explicitly included in the final listing.";
+  if (text.includes("wall") || text.includes("shelf") || text.includes("hook")) return "PLA or PETG; mounting hardware is not included unless selected.";
+  return "PLA or PETG 3D printed plastic.";
+}
+
+function localEtsyTags(product: Product, research: Record<string, unknown> | null, primaryKeyword: string, category: string) {
+  const base = [
+    primaryKeyword,
+    ...(product.tags || []),
+    ...splitList(researchText(research, "Tags")),
+    category,
+    "3d printed",
+    "custom gift",
+    "personalized gift",
+    "desk accessory",
+    "home organizer",
+    "made to order",
+    "teacher gift",
+    "unique gift",
+    "functional print",
+  ];
+
+  return normalizeStringArray(base)
+    .map((tag) => tag.toLowerCase().replace(/\s+/g, " ").trim())
+    .filter((tag) => tag.length <= 20)
+    .slice(0, 13);
+}
+
+function buyerUseCaseForProduct(name: string, category: string, primaryKeyword: string) {
+  const text = `${name} ${category} ${primaryKeyword}`.toLowerCase();
+  if (text.includes("cookie")) return "baking, party favors, classroom rewards, seasonal gifts, and personalized treats";
+  if (text.includes("lamp")) return "personalized room decor, nightstand styling, gifts, and custom photo keepsakes";
+  if (text.includes("pet")) return "pet owners, feeding stations, gift baskets, and personalized daily routines";
+  if (text.includes("shelf")) return "wall storage, display setups, small-space organization, and custom room decor";
+  if (text.includes("controller") || text.includes("gaming")) return "gaming desks, controller storage, entertainment centers, and gamer gifts";
+  if (text.includes("vase") || text.includes("planter")) return "home decor, desk styling, shelf displays, gifts, and seasonal arrangements";
+  return "gifting, desk setups, home organization, and custom functional use";
+}
+
+function includedForProduct(name: string, category: string) {
+  const text = `${name} ${category}`.toLowerCase();
+  if (text.includes("set")) return "one made-to-order set as described, with selected color/size options confirmed before production.";
+  if (text.includes("lamp")) return "one printed lamp body or custom lamp component as configured; electronics are included only when explicitly selected.";
+  if (text.includes("shelf") || text.includes("wall")) return "one printed item; mounting hardware is not included unless the listing says otherwise.";
+  return "one made-to-order 3D printed item with the selected options.";
+}
+
+function customizationForProduct(name: string, category: string) {
+  const text = `${name} ${category}`.toLowerCase();
+  if (text.includes("cookie") || text.includes("personal") || text.includes("custom")) {
+    return "Personalization can include requested text, initials, color, size, or simple custom notes when offered.";
+  }
+  return "Choose available color, size, and finish options. Message before ordering for custom sizing or special requests.";
 }
 
 async function getProductSheetResearch(product: Product) {

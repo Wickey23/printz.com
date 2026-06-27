@@ -15,9 +15,9 @@ export function AiEtsyAutofillPanel({ product }: { product: Product }) {
       <div className="flex items-start gap-3">
         <Bot className="mt-1 shrink-0 text-emerald-200" size={22} />
         <div>
-          <h2 className="text-lg font-black text-zinc-50">ChatGPT Etsy autofill</h2>
+          <h2 className="text-lg font-black text-zinc-50">Etsy autofill</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-300">
-            Fill missing Etsy-readiness fields using this product plus Google Sheet research keywords, score, volume, competition, price notes, and launch notes.
+            Fill missing Etsy-readiness fields using this product plus Google Sheet research. Uses AI when available, then falls back to local listing rules when API quota is blocked.
           </p>
         </div>
       </div>
@@ -32,7 +32,7 @@ export function AiEtsyAutofillPanel({ product }: { product: Product }) {
           <Sparkles className={pending ? "animate-pulse" : ""} size={16} />
           {pending ? "Writing..." : "Fill Etsy gaps"}
         </button>
-        <p className="text-xs leading-5 text-zinc-400">Does not publish. Review generated fields before creating an Etsy draft.</p>
+        <p className="text-xs leading-5 text-zinc-400">Does not publish. Review filled fields before creating an Etsy draft.</p>
       </form>
 
       {state.message ? (
