@@ -31,6 +31,14 @@ export function productToEtsyDraft(product: Product, taxonomyId: string) {
 
   if (isDigital) {
     body.set("type", "download");
+  } else {
+    const packageDetails = etsyPackageDetails(product);
+    body.set("item_weight", packageDetails.weight);
+    body.set("item_length", packageDetails.length);
+    body.set("item_width", packageDetails.width);
+    body.set("item_height", packageDetails.height);
+    body.set("item_weight_unit", "oz");
+    body.set("item_dimensions_unit", "in");
   }
 
   const tags = etsyTags(product);
@@ -172,6 +180,30 @@ function etsyTags(product: Product) {
     .filter(Boolean)
     .map((tag) => tag.slice(0, 20))
     .slice(0, 13);
+}
+
+function etsyPackageDetails(product: Product) {
+  const text = [product.name, product.category, product.short_description, product.dimensions, ...(product.tags || [])]
+    .join(" ")
+    .toLowerCase();
+
+  if (text.includes("cookie") || text.includes("cutter")) {
+    return { weight: "4", length: "6", width: "6", height: "2" };
+  }
+  if (text.includes("lamp")) {
+    return { weight: "12", length: "8", width: "8", height: "8" };
+  }
+  if (text.includes("shelf") || text.includes("wall")) {
+    return { weight: "16", length: "10", width: "8", height: "4" };
+  }
+  if (text.includes("controller") || text.includes("stand")) {
+    return { weight: "8", length: "8", width: "6", height: "4" };
+  }
+  if (text.includes("vase") || text.includes("planter")) {
+    return { weight: "10", length: "8", width: "8", height: "8" };
+  }
+
+  return { weight: "8", length: "8", width: "6", height: "4" };
 }
 
 function listLine(label: string, values?: string[] | null) {
