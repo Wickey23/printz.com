@@ -18,6 +18,7 @@ This is the simplified workflow for product intake.
 - Put one product's images/videos in one Google Drive folder.
 - Add that folder URL to `drive_media_folder_url` in the CSV.
 - During import, the site attempts to copy that folder's images/videos into Supabase `product_media` for the product carousel.
+- For manual products, paste the same folder URL into the product's `Drive media folder URL`, save the product, then use `Import Drive media` on the product edit page.
 - This requires Google service-account credentials and the Drive folder shared with that service account.
 - You can also paste direct image/video URLs into `gallery_media_urls`, separated by commas or new lines.
 

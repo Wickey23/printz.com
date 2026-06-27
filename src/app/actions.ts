@@ -13,7 +13,8 @@ import { syncEtsyListings } from "@/lib/etsy-sync";
 import { importProductsCsvText } from "@/lib/product-import";
 import type { Product, ProductMedia } from "@/lib/types";
 import { optionalTextFromForm, slugify, textFromForm } from "@/lib/utils";
-import { runProductCommandSync } from "../../scripts/lib/product-command-sync.mjs";
+import { runProductCommandSync, syncDriveMedia } from "../../scripts/lib/product-command-sync.mjs";
+import { GoogleDriveClient } from "../../scripts/lib/google-drive-client.mjs";
 import { GoogleSheetsClient } from "../../scripts/lib/google-sheets-client.mjs";
 
 export type ActionState = {
@@ -803,6 +804,52 @@ export async function updateProduct(_: ActionState, formData: FormData): Promise
   revalidatePath("/products");
   revalidatePath("/admin");
   redirect("/admin");
+}
+
+export async function importProductDriveMedia(_: ActionState, formData: FormData): Promise<ActionState> {
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  const id = textFromForm(formData, "product_id");
+  if (!id) return failure("Missing product id.");
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required for Drive media import.");
+
+  const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
+  if (error) return failure(error.message);
+  if (!data) return failure("Product not found.");
+
+  const product = data as Product;
+  const hasFolder = Boolean(product.drive_media_folder_url);
+  const hasParentFolder = Boolean(process.env.PRINTZ_PRODUCT_MEDIA_PARENT_FOLDER_URL || process.env.PRINTZ_DRIVE_MEDIA_PARENT_FOLDER_URL);
+  if (!hasFolder && !hasParentFolder) {
+    return failure("Add a Drive media folder URL to this product, or configure PRINTZ_PRODUCT_MEDIA_PARENT_FOLDER_URL.");
+  }
+
+  const report = { mediaUploads: 0, mediaSkipped: 0 };
+  try {
+    await syncDriveMedia({
+      drive: new GoogleDriveClient(process.env),
+      supabase,
+      product,
+      folderUrl: product.drive_media_folder_url,
+      row: product,
+      idx: new Map(),
+      rowNumber: 0,
+      sheets: { batch: async () => {} },
+      report,
+    });
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Could not import Drive media.");
+  }
+
+  revalidatePath("/");
+  revalidatePath("/products");
+  revalidatePath("/admin");
+  revalidatePath(`/admin/products/${product.id}`);
+  if (product.slug) revalidatePath(`/products/${product.slug}`);
+
+  return success(`Drive media imported. Uploaded ${report.mediaUploads} file${report.mediaUploads === 1 ? "" : "s"}; skipped ${report.mediaSkipped} already-uploaded file${report.mediaSkipped === 1 ? "" : "s"}.`);
 }
 export async function archiveProduct(formData: FormData) {
   if (!(await assertAdmin())) return;
