@@ -16,6 +16,7 @@ export type EtsyListingSyncResult = {
   url: string;
   state: "draft" | "active" | string;
   uploadedImages: number;
+  recreatedDraft?: boolean;
 };
 
 export function etsyListingRequirements(product: Product, options: { hasOAuthToken?: boolean; settings?: Partial<EtsyRuntimeSettings> } = {}) {
@@ -23,11 +24,21 @@ export function etsyListingRequirements(product: Product, options: { hasOAuthTok
 }
 
 export async function createOrSyncEtsyListing({ apiKey, accessToken, settings, product, media = [], publish = false }: EtsyListingSyncInput): Promise<EtsyListingSyncResult> {
-  const listingId = product.etsy_listing_id || (await createDraft(apiKey, accessToken, settings, product)).listingId;
-  await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
+  let listingId = product.etsy_listing_id || (await createDraft(apiKey, accessToken, settings, product)).listingId;
+  let recreatedDraft = false;
+
+  try {
+    await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
+  } catch (error) {
+    if (!(error instanceof EtsyApiError) || error.status !== 404 || !product.etsy_listing_id) throw error;
+    listingId = (await createDraft(apiKey, accessToken, settings, product)).listingId;
+    recreatedDraft = true;
+    await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
+  }
+
   const uploadedImages = await syncListingImages({ apiKey, accessToken, shopId: settings.shopId, listingId, product, media });
-  const url = product.etsy_url || `https://www.etsy.com/listing/${listingId}`;
-  return { listingId, url, state: publish ? "active" : product.etsy_state || "draft", uploadedImages };
+  const url = product.etsy_listing_id === listingId && product.etsy_url ? product.etsy_url : `https://www.etsy.com/listing/${listingId}`;
+  return { listingId, url, state: publish ? "active" : product.etsy_state || "draft", uploadedImages, recreatedDraft };
 }
 
 async function createDraft(apiKey: string, accessToken: string, settings: EtsyRuntimeSettings, product: Product) {
@@ -77,7 +88,7 @@ async function updateListing({
   });
 
   const text = await response.text();
-  if (!response.ok) throw new Error(etsyApiError("Etsy listing update failed", response.status, text));
+  if (!response.ok) throw new EtsyApiError("Etsy listing update failed", response.status, text);
 }
 
 async function syncListingImages({
@@ -120,7 +131,7 @@ async function syncListingImages({
     });
 
     const text = await response.text();
-    if (!response.ok) throw new Error(etsyApiError("Etsy image upload failed", response.status, text));
+    if (!response.ok) throw new EtsyApiError("Etsy image upload failed", response.status, text);
     uploaded++;
   }
 
@@ -163,10 +174,17 @@ function fileNameFromUrl(url: string, contentType: string) {
   return `printz-product-image.${ext}`;
 }
 
-function etsyApiError(context: string, status: number, body: string) {
-  const details = body.slice(0, 500);
-  if (status === 401 || status === 403 || body.toLowerCase().includes("scope")) {
-    return `${context}: Etsy needs an approved app and OAuth token with listings_w scope. Etsy returned ${status}: ${details}`;
+class EtsyApiError extends Error {
+  status: number;
+
+  constructor(context: string, status: number, body: string) {
+    const details = body.slice(0, 500);
+    const message =
+      status === 401 || status === 403 || body.toLowerCase().includes("scope")
+        ? `${context}: Etsy needs an approved app and OAuth token with listings_w scope. Etsy returned ${status}: ${details}`
+        : `${context}: ${status}: ${details}`;
+    super(message);
+    this.name = "EtsyApiError";
+    this.status = status;
   }
-  return `${context}: ${status}: ${details}`;
 }

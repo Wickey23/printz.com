@@ -1740,7 +1740,7 @@ async function syncProductToAttachedEtsyListing(productId: string, publish: bool
 
     return {
       ok: true,
-      message: `${publish ? "Published/synced" : "Synced"} Etsy listing ${result.listingId}. Uploaded ${result.uploadedImages} new image${result.uploadedImages === 1 ? "" : "s"}.`,
+      message: `${result.recreatedDraft ? "Saved Etsy listing was missing, so a new draft was created. " : ""}${publish ? "Published/synced" : "Synced"} Etsy listing ${result.listingId}. Uploaded ${result.uploadedImages} new image${result.uploadedImages === 1 ? "" : "s"}.`,
       listingUrl: result.url,
       uploadedImages: result.uploadedImages,
     };
