@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, Download, Mail, Package, Palette, Ruler, ShieldCheck, Sparkles, Wand2 } from "lucide-react";
+import { ProductMediaCarousel } from "@/components/product-media-carousel";
 import { getProductBySlug, getProductMedia } from "@/lib/data";
 import { isRequestOnlyProduct, requestPrintHref } from "@/lib/product-flags";
 import type { ProductMedia } from "@/lib/types";
@@ -53,41 +54,7 @@ export default async function ProductDetailPage({ params }: Props) {
 
   return (
     <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
-      <div className="grid gap-4">
-        <div className="flex snap-x gap-4 overflow-x-auto pb-2">
-          {gallery.length ? (
-            gallery.map((item, index) => (
-              <div
-                className="aspect-[4/3] w-[88%] shrink-0 snap-center overflow-hidden rounded-lg border border-white/10 bg-zinc-900 sm:w-[76%] lg:w-full"
-                key={`${item.url}-${index}`}
-              >
-                {item.media_type === "image" ? (
-                  <img alt={`${product.name} preview ${index + 1}`} className="h-full w-full object-cover" src={item.url} />
-                ) : (
-                  <video className="h-full w-full object-cover" controls src={item.url} />
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="grid aspect-[4/3] w-full place-items-center rounded-lg border border-white/10 bg-zinc-900 text-zinc-500">
-              <Sparkles size={42} />
-            </div>
-          )}
-        </div>
-        {gallery.length ? (
-          <div className="flex snap-x gap-3 overflow-x-auto pb-2">
-            {gallery.map((item, index) => (
-              <div className="aspect-square w-24 shrink-0 snap-start overflow-hidden rounded-md border border-white/10 bg-zinc-900 sm:w-28" key={`${item.url}-thumb-${index}`}>
-                {item.media_type === "image" ? (
-                  <img alt={`${product.name} thumbnail ${index + 1}`} className="h-full w-full object-cover" src={item.url} />
-                ) : (
-                  <video className="h-full w-full object-cover" controls src={item.url} />
-                )}
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <ProductMediaCarousel items={gallery} productName={product.name} />
 
       <div>
         <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-200">{product.category}</p>
