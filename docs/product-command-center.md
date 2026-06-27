@@ -3,7 +3,9 @@
 ## Source of truth
 
 - Supabase `products` is the canonical product database.
-- The Google Sheet is the editable product command center.
+- The Google Sheet tab `Import XLOOKUP Template` is the editable source-of-truth queue for products that should be added or updated on the site.
+- Type or paste a product name into column A on `Import XLOOKUP Template`; its XLOOKUP formulas pull product details from `Product Intake`.
+- Any row on `Import XLOOKUP Template` with a `name` is considered by the automated sync. Blank rows are ignored.
 - `Sheet1` remains as the compatibility/master table so existing data is not lost.
 - `Research Queue`, `Listing Builder`, `Rights & Attribution`, and `Pricing & Production` are focused working tabs for easier editing.
 - `Site Products` is rebuilt from Supabase and must not be edited.
@@ -24,12 +26,13 @@ Run `npm run setup:product-tabs` after Google service-account credentials are co
 
 ## Processing flow
 
-1. Complete the product across the focused tabs and review rights, media, and pricing inputs.
-2. Set `Workflow Status` to `Ready` and check `Send to Final Stage / Site` in any command-center tab.
-3. The sync service merges matching rows and then matches existing site products by Product ID, normalized source URL, slug, then unique name.
+1. Complete or review the source product in `Product Intake`.
+2. Add the product name to `Import XLOOKUP Template`; the remaining import columns populate from `Product Intake`.
+3. Review the populated row, especially `active`, `license_notes`, media fields, price, and descriptions.
+4. The sync service reads `Import XLOOKUP Template` and matches existing site products by Product ID, normalized source URL, slug, then unique name.
 4. It rejects duplicate creation, unsafe activation, invalid rights, and stale sync versions.
-5. It creates or updates Supabase, imports media from the Drive folder, records audit history, writes Product ID/version/status back to every matching command-center tab, and rebuilds `Site Products`.
-6. Failed rows remain checked with `Blocked`, `Conflict`, or `Error` details.
+5. It creates or updates Supabase, imports media from the Drive folder, records audit history, writes status/output fields back to `Import XLOOKUP Template`, and rebuilds `Site Products`.
+6. Failed rows remain visible with `Blocked`, `Conflict`, or `Error` details in the import output columns.
 
 ## Drive media workflow
 

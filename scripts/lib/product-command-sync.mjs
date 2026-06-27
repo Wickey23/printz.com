@@ -16,10 +16,11 @@ import {
 } from "./product-command-rules.mjs";
 
 const SHEET_ID = "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
-const WORKING = "Product Intake";
+const WORKING = "Import XLOOKUP Template";
 const MIRROR = "Site Products";
 const SPLIT_TABS = [];
 const PRIMARY_WRITE_ORDER = [WORKING];
+const AUTO_SYNC_TABS = new Set(["Import XLOOKUP Template"]);
 
 export async function runProductCommandSync({env = process.env, dryRun = false} = {}) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -55,7 +56,7 @@ export async function runProductCommandSync({env = process.env, dryRun = false} 
   const current = [...(products || [])];
 
   for (const record of records) {
-    if (!parseBoolean(valueAny(record, ["Send to Final Stage / Site", "Sync to Site"]))) continue;
+    if (!shouldSyncRecord(record)) continue;
 
     const rowNumber = record.primary?.rowNumber || 0;
     const sheetName = record.primary?.sheetName || WORKING;
@@ -356,6 +357,13 @@ function choosePrimary(sources) {
   return pool[0] || null;
 }
 
+function shouldSyncRecord(record) {
+  if (parseBoolean(valueAny(record, ["Send to Final Stage / Site", "Sync to Site"]))) return true;
+  const primaryName = record.primary?.sheetName;
+  if (!AUTO_SYNC_TABS.has(primaryName)) return false;
+  return Boolean(text(valueAny(record, ["name", "Name", "Product Name", "title", "Title"])));
+}
+
 function value(record, name) {
   const pos = record.idx.get(name);
   return pos === undefined ? undefined : record.row[pos];
@@ -405,61 +413,61 @@ function nullableBool(v) {
 }
 
 function toProduct(row, idx, n, sheetName = WORKING) {
-  const sourceUrl = text(getAny(row, idx, ["Source URL", "Maker World Link", "Source / MakerWorld URL"]));
-  const primaryKeyword = text(getAny(row, idx, ["Primary Keyword", "Product Keyword", "Keywords to search"])) || keywordFromSourceUrl(sourceUrl);
-  const name = getAny(row, idx, ["Name", "Product Name", "Bambu studio FOUND PRINT"]) || primaryKeyword;
+  const sourceUrl = text(getAny(row, idx, ["source_url", "Source URL", "Maker World Link", "Source / MakerWorld URL"]));
+  const primaryKeyword = text(getAny(row, idx, ["Primary Keyword", "Product Keyword", "Keywords to search", "tags"])) || keywordFromSourceUrl(sourceUrl);
+  const name = getAny(row, idx, ["name", "Name", "Product Name", "title", "Title", "Bambu studio FOUND PRINT"]) || primaryKeyword;
   return {
-    id: text(get(row, idx, "Product ID")),
+    id: text(getAny(row, idx, ["product_id", "Product ID"])),
     name: text(name),
-    slug: text(get(row, idx, "Slug")),
-    short_description: text(getAny(row, idx, ["Short Description", "Description"])) || text(name),
-    full_description: text(get(row, idx, "Full Description")) || text(getAny(row, idx, ["Short Description", "Description"])),
-    category: text(get(row, idx, "Category")) || "Functional Prints",
-    price: parseNumber(get(row, idx, "Price") ?? get(row, idx, "AI Draft Price")),
-    etsy_url: text(get(row, idx, "Etsy URL")),
-    main_image_url: text(get(row, idx, "Main Image (Drive or Direct URL)") ?? get(row, idx, "Main Image (Drive File URL)")),
-    video_url: text(get(row, idx, "Video URL")),
-    materials: text(getAny(row, idx, ["Materials", "Material Options (comma-separated)", "Material Choices (comma-separated)"])),
-    dimensions: text(get(row, idx, "Dimensions")),
-    customization_notes: text(get(row, idx, "Customization Notes")),
-    personalization_enabled: parseBoolean(get(row, idx, "Personalization Enabled")),
-    personalization_prompt: text(get(row, idx, "Personalization Prompt")),
-    color_options: parseList(getAny(row, idx, ["Color Options", "Color Options (comma-separated)", "Color Choices (comma-separated)"])),
-    size_options: parseList(get(row, idx, "Size Options (comma-separated)")),
-    finish_options: parseList(get(row, idx, "Finish Options (comma-separated)")),
-    processing_time: text(get(row, idx, "Processing Time")),
-    care_instructions: text(get(row, idx, "Care Instructions")),
+    slug: text(getAny(row, idx, ["slug", "Slug"])),
+    short_description: text(getAny(row, idx, ["short_description", "Short Description", "Description"])) || text(name),
+    full_description: text(getAny(row, idx, ["full_description", "Full Description"])) || text(getAny(row, idx, ["short_description", "Short Description", "Description"])),
+    category: text(getAny(row, idx, ["category", "Category"])) || "Functional Prints",
+    price: parseNumber(getAny(row, idx, ["price", "Price", "AI Draft Price", "ai_suggested_price"])),
+    etsy_url: text(getAny(row, idx, ["etsy_url", "Etsy URL"])),
+    main_image_url: text(getAny(row, idx, ["main_image_url", "Main Image (Drive or Direct URL)", "Main Image (Drive File URL)"])),
+    video_url: text(getAny(row, idx, ["video_url", "Video URL"])),
+    materials: text(getAny(row, idx, ["materials", "Materials", "Material Options (comma-separated)", "Material Choices (comma-separated)"])),
+    dimensions: text(getAny(row, idx, ["dimensions", "Dimensions"])),
+    customization_notes: text(getAny(row, idx, ["customization_notes", "Customization Notes"])),
+    personalization_enabled: parseBoolean(getAny(row, idx, ["personalization_enabled", "Personalization Enabled"])),
+    personalization_prompt: text(getAny(row, idx, ["personalization_prompt", "Personalization Prompt"])),
+    color_options: parseList(getAny(row, idx, ["color_options", "Color Options", "Color Options (comma-separated)", "Color Choices (comma-separated)"])),
+    size_options: parseList(getAny(row, idx, ["size_options", "Size Options", "Size Options (comma-separated)"])),
+    finish_options: parseList(getAny(row, idx, ["finish_options", "Finish Options", "Finish Options (comma-separated)"])),
+    processing_time: text(getAny(row, idx, ["processing_time", "Processing Time"])),
+    care_instructions: text(getAny(row, idx, ["care_instructions", "Care Instructions"])),
     source_url: sourceUrl,
-    license_notes: text(get(row, idx, "License Notes")),
-    tags: parseList(get(row, idx, "Tags") || primaryKeyword),
-    featured: parseBoolean(get(row, idx, "Featured")),
-    active: parseBoolean(get(row, idx, "Active on Site")),
-    workflow_status: text(get(row, idx, "Workflow Status")) || "Queued",
-    sync_version: parseNumber(get(row, idx, "Sync Version")),
-    sheet_row_id: text(get(row, idx, "Canonical Row ID")) || `${sheetName}:${n}`,
-    creator_name: text(get(row, idx, "Creator Name")),
-    source_platform: text(get(row, idx, "Source Platform")) || (sourceUrl?.includes("makerworld.com") ? "MakerWorld" : null),
-    license_type: text(get(row, idx, "License Type") ?? get(row, idx, "Column 13")),
-    license_url: text(get(row, idx, "License URL")),
-    commercial_sale_allowed: nullableBool(get(row, idx, "Commercial Sale Allowed") ?? get(row, idx, "Commercial Print Sale")),
-    modification_allowed: nullableBool(get(row, idx, "Modification Allowed")),
-    attribution_required: nullableBool(get(row, idx, "Attribution Required")),
-    share_alike_required: nullableBool(get(row, idx, "Share-Alike Required")),
-    trademark_review_status: text(get(row, idx, "Trademark Review")) || "Not Required",
-    rights_status: text(get(row, idx, "Rights Status")) || "Needs Review",
-    attribution_text: text(get(row, idx, "Attribution Text") ?? get(row, idx, "Etsy Attribution")),
-    rights_snapshot: text(get(row, idx, "Rights Snapshot")),
-    media_status: text(get(row, idx, "Media Status")) || "Missing",
-    drive_media_folder_url: text(get(row, idx, "Drive Media Folder URL") ?? get(row, idx, "Gallery Folder or Image URLs")),
-    estimated_grams: parseNumber(get(row, idx, "Estimated Grams")),
-    estimated_print_hours: parseNumber(get(row, idx, "Estimated Print Hours")),
-    material_cost_per_gram: parseNumber(get(row, idx, "Material Cost / Gram")),
-    machine_hourly_cost: parseNumber(get(row, idx, "Machine Cost / Hour")),
-    labor_cost: parseNumber(get(row, idx, "Labor Cost")),
-    packaging_cost: parseNumber(get(row, idx, "Packaging Cost")),
-    failure_allowance_percent: parseNumber(get(row, idx, "Failure Allowance %")),
-    marketplace_fee_percent: parseNumber(get(row, idx, "Marketplace Fee %")),
-    target_margin_percent: parseNumber(get(row, idx, "Target Margin %")),
+    license_notes: text(getAny(row, idx, ["license_notes", "License Notes"])),
+    tags: parseList(getAny(row, idx, ["tags", "Tags"]) || primaryKeyword),
+    featured: parseBoolean(getAny(row, idx, ["featured", "Featured"])),
+    active: parseBoolean(getAny(row, idx, ["active", "Active on Site"])),
+    workflow_status: text(getAny(row, idx, ["workflow_status", "Workflow Status", "import_status"])) || "Queued",
+    sync_version: parseNumber(getAny(row, idx, ["sync_version", "Sync Version"])),
+    sheet_row_id: text(getAny(row, idx, ["sheet_row_id", "Canonical Row ID"])) || `${sheetName}:${n}`,
+    creator_name: text(getAny(row, idx, ["creator_name", "Creator Name"])),
+    source_platform: text(getAny(row, idx, ["source_platform", "Source Platform"])) || (sourceUrl?.includes("makerworld.com") ? "MakerWorld" : null),
+    license_type: text(getAny(row, idx, ["license_type", "License Type", "Column 13"])),
+    license_url: text(getAny(row, idx, ["license_url", "License URL"])),
+    commercial_sale_allowed: nullableBool(getAny(row, idx, ["commercial_sale_allowed", "Commercial Sale Allowed", "Commercial Print Sale"])),
+    modification_allowed: nullableBool(getAny(row, idx, ["modification_allowed", "Modification Allowed"])),
+    attribution_required: nullableBool(getAny(row, idx, ["attribution_required", "Attribution Required"])),
+    share_alike_required: nullableBool(getAny(row, idx, ["share_alike_required", "Share-Alike Required"])),
+    trademark_review_status: text(getAny(row, idx, ["trademark_review_status", "Trademark Review"])) || "Not Required",
+    rights_status: text(getAny(row, idx, ["rights_status", "Rights Status"])) || (sourceUrl ? "Needs Review" : "Not Applicable"),
+    attribution_text: text(getAny(row, idx, ["attribution_text", "Attribution Text", "Etsy Attribution"])),
+    rights_snapshot: text(getAny(row, idx, ["rights_snapshot", "Rights Snapshot"])),
+    media_status: text(getAny(row, idx, ["media_status", "Media Status"])) || "Missing",
+    drive_media_folder_url: text(getAny(row, idx, ["drive_media_folder_url", "Drive Media Folder URL", "Gallery Folder or Image URLs"])),
+    estimated_grams: parseNumber(getAny(row, idx, ["estimated_grams", "Estimated Grams"])),
+    estimated_print_hours: parseNumber(getAny(row, idx, ["estimated_print_hours", "Estimated Print Hours"])),
+    material_cost_per_gram: parseNumber(getAny(row, idx, ["material_cost_per_gram", "Material Cost / Gram"])),
+    machine_hourly_cost: parseNumber(getAny(row, idx, ["machine_hourly_cost", "Machine Cost / Hour"])),
+    labor_cost: parseNumber(getAny(row, idx, ["labor_cost", "Labor Cost"])),
+    packaging_cost: parseNumber(getAny(row, idx, ["packaging_cost", "Packaging Cost"])),
+    failure_allowance_percent: parseNumber(getAny(row, idx, ["failure_allowance_percent", "Failure Allowance %"])),
+    marketplace_fee_percent: parseNumber(getAny(row, idx, ["marketplace_fee_percent", "Marketplace Fee %"])),
+    target_margin_percent: parseNumber(getAny(row, idx, ["target_margin_percent", "Target Margin %"])),
   };
 }
 
@@ -491,24 +499,35 @@ async function named(sheets, target, values) {
 async function writeBack(sheets, record, p, warnings) {
   await named(sheets, record, {
     "Send to Final Stage / Site": false,
+    "import_status": `Success ${new Date().toISOString()}${warnings.length ? ` - ${warnings.join(" ")}` : ""}`,
     "Working Sync Status": `Success ${new Date().toISOString()} - Product ID ${p.id}${warnings.length ? ` - ${warnings.join(" ")}` : ""}`,
+    "product_id": p.id,
     "Product ID": p.id,
     "Name": p.name,
     "Slug": p.slug,
     "Price": p.price,
+    "active": p.active,
     "Active on Site": p.active,
+    "site_url": productSiteUrl(p.slug),
     "Site URL": productSiteUrl(p.slug),
     "Workflow Status": p.active ? "Live" : "Ready",
     "Last Sync": p.sheet_synced_at,
     "Sync Version": p.sync_version,
     "Validation Errors": "",
+    "media_status": p.media_status,
     "Media Status": p.media_status,
+    "main_image_url": p.main_image_url,
     "Main Image (Drive or Direct URL)": p.main_image_url,
+    "video_url": p.video_url,
     "Video URL": p.video_url,
+    "drive_media_folder_url": p.drive_media_folder_url,
     "Drive Media Folder URL": p.drive_media_folder_url,
     "Estimated Cost": p.estimated_cost,
+    "ai_suggested_price": p.suggested_price,
     "Suggested Price": p.suggested_price,
+    "ai_price_notes": p.pricing_status,
     "Pricing Status": p.pricing_status,
+    "imported_at": p.sheet_synced_at,
   });
 }
 
@@ -516,11 +535,14 @@ async function result(sheets, record, r, dry) {
   if (!dry) {
     await named(sheets, record, {
       "Send to Final Stage / Site": r.keep === true,
+      "import_status": r.status,
       "Working Sync Status": r.status,
       "Workflow Status": r.workflow,
       "Validation Errors": r.errors,
+      "ai_suggested_price": r.suggestedPrice,
       "Estimated Cost": r.estimatedCost,
       "Suggested Price": r.suggestedPrice,
+      "ai_price_notes": r.priceStatus,
       "Pricing Status": r.priceStatus,
     });
   }

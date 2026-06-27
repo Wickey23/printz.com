@@ -98,8 +98,8 @@ export default async function AdminPage() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
-            <a className="text-amber-200" href="https://docs.google.com/spreadsheets/d/14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs/edit#gid=230000001" rel="noreferrer" target="_blank">
-              Open Product Intake
+            <a className="text-amber-200" href="https://docs.google.com/spreadsheets/d/14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs/edit#gid=1826938160" rel="noreferrer" target="_blank">
+              Open XLOOKUP import source
             </a>
             <Link className="text-amber-200" href="/admin/products/new">Create manual product</Link>
           </div>
