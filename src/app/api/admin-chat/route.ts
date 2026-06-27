@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isApprovedAdmin } from "@/lib/auth";
 import { createEtsyDraftFromProduct, etsyDraftRequirements } from "@/lib/etsy-drafts";
 import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken } from "@/lib/etsy-auth";
+import { createOpenAiResponse, getOpenAiApiKeys, openAiKeyMissingMessage } from "@/lib/openai-response";
 import { productSchema } from "@/lib/schemas";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -54,9 +55,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: "Unauthorized." }, { status: 401 });
   }
 
-  const openAiKey = process.env.OPENAI_API_KEY;
-  if (!openAiKey) {
-    return NextResponse.json({ ok: false, message: "OPENAI_API_KEY is not configured." }, { status: 500 });
+  if (!getOpenAiApiKeys().length) {
+    return NextResponse.json({ ok: false, message: openAiKeyMissingMessage() }, { status: 500 });
   }
 
   const formData = await request.formData();
@@ -81,13 +81,9 @@ export async function POST(request: Request) {
       })),
   );
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openAiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  let result;
+  try {
+    result = await createOpenAiResponse({
       model: process.env.OPENAI_ADMIN_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
       max_output_tokens: 6000,
       tools: [{ type: "web_search_preview" }],
@@ -138,14 +134,12 @@ export async function POST(request: Request) {
           ],
         },
       ],
-    }),
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    const messageText =
-      typeof result?.error?.message === "string" ? result.error.message : "Admin assistant request failed.";
-    return NextResponse.json({ ok: false, message: messageText }, { status: response.status });
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, message: error instanceof Error ? error.message : "Admin assistant request failed." },
+      { status: 500 },
+    );
   }
 
   const answer = extractResponseText(result);

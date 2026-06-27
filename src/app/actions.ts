@@ -11,6 +11,7 @@ import { createOrSyncEtsyListing, etsyListingRequirements } from "@/lib/etsy-lis
 import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { syncEtsyListings } from "@/lib/etsy-sync";
 import { importProductsCsvText } from "@/lib/product-import";
+import { createOpenAiResponse, getOpenAiApiKeys, openAiKeyMissingMessage } from "@/lib/openai-response";
 import type { Product, ProductMedia } from "@/lib/types";
 import { optionalTextFromForm, slugify, textFromForm } from "@/lib/utils";
 import { runProductCommandSync, syncDriveMedia } from "../../scripts/lib/product-command-sync.mjs";
@@ -1016,9 +1017,8 @@ export async function generateAiListing(
 ): Promise<AiListingState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
-  const openAiKey = process.env.OPENAI_API_KEY;
-  if (!openAiKey) {
-    return failure("OPENAI_API_KEY is not configured.");
+  if (!getOpenAiApiKeys().length) {
+    return failure(openAiKeyMissingMessage());
   }
 
   const idea = textFromForm(formData, "idea");
@@ -1062,7 +1062,7 @@ export async function generateAiListing(
   ].join("\n");
 
   try {
-    const result = await createOpenAiResponse(openAiKey, {
+    const result = await createOpenAiResponse({
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
       fallbackModel: "gpt-4.1-mini",
       input: prompt,
@@ -1097,8 +1097,7 @@ export async function generateAiListing(
 export async function autofillProductEtsyFields(_: ActionState, formData: FormData): Promise<ActionState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
-  const openAiKey = process.env.OPENAI_API_KEY;
-  if (!openAiKey) return failure("OPENAI_API_KEY is not configured.");
+  if (!getOpenAiApiKeys().length) return failure(openAiKeyMissingMessage());
 
   const id = textFromForm(formData, "product_id");
   if (!id) return failure("Missing product id.");
@@ -1135,7 +1134,7 @@ export async function autofillProductEtsyFields(_: ActionState, formData: FormDa
   ].join("\n");
 
   try {
-    const result = await createOpenAiResponse(openAiKey, {
+    const result = await createOpenAiResponse({
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
       fallbackModel: "gpt-4.1-mini",
       input: prompt,
@@ -1171,8 +1170,7 @@ export async function autofillProductEtsyFields(_: ActionState, formData: FormDa
 export async function generateAiScoutListing(_: AiScoutState, formData: FormData): Promise<AiScoutState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
-  const openAiKey = process.env.OPENAI_API_KEY;
-  if (!openAiKey) return failure("OPENAI_API_KEY is not configured.");
+  if (!getOpenAiApiKeys().length) return failure(openAiKeyMissingMessage());
 
   const message = textFromForm(formData, "message");
   const sourceUrl = optionalTextFromForm(formData, "source_url");
@@ -1198,7 +1196,7 @@ export async function generateAiScoutListing(_: AiScoutState, formData: FormData
   ].join("\n");
 
   try {
-    const result = await createOpenAiResponse(openAiKey, {
+    const result = await createOpenAiResponse({
       model: process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
       fallbackModel: "gpt-4.1-mini",
       input: prompt,
@@ -1224,9 +1222,8 @@ export async function generateAiMarketResearch(
 ): Promise<AiMarketResearchState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
-  const openAiKey = process.env.OPENAI_API_KEY;
-  if (!openAiKey) {
-    return failure("OPENAI_API_KEY is not configured.");
+  if (!getOpenAiApiKeys().length) {
+    return failure(openAiKeyMissingMessage());
   }
 
   const focus = textFromForm(formData, "focus") || "Etsy opportunities for PRINTZ";
@@ -1251,7 +1248,7 @@ export async function generateAiMarketResearch(
   ].join("\n");
 
   try {
-    const result = await createOpenAiResponse(openAiKey, {
+    const result = await createOpenAiResponse({
       model: process.env.OPENAI_RESEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
       fallbackModel: "gpt-4.1-mini",
       input: prompt,
@@ -1283,45 +1280,6 @@ export async function generateAiMarketResearch(
     };
   } catch (error) {
     return failure(error instanceof Error ? error.message : "AI market research failed. Please try again.");
-  }
-}
-
-async function createOpenAiResponse(
-  openAiKey: string,
-  body: {
-    model: string;
-    fallbackModel?: string;
-    input: string;
-    max_output_tokens: number;
-    tools?: Array<Record<string, unknown>>;
-  },
-) {
-  const tryRequest = async (model: string) => {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openAiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        input: body.input,
-        tools: body.tools,
-        max_output_tokens: body.max_output_tokens,
-      }),
-    });
-
-    if (response.ok) return response.json();
-
-    const message = await response.text();
-    throw new Error(`OpenAI request failed for ${model}: ${message.slice(0, 260)}`);
-  };
-
-  try {
-    return await tryRequest(body.model);
-  } catch (error) {
-    if (!body.fallbackModel || body.fallbackModel === body.model) throw error;
-    return tryRequest(body.fallbackModel);
   }
 }
 
