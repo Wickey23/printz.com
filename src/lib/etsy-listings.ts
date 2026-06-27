@@ -24,20 +24,26 @@ export function etsyListingRequirements(product: Product, options: { hasOAuthTok
 }
 
 export async function createOrSyncEtsyListing({ apiKey, accessToken, settings, product, media = [], publish = false }: EtsyListingSyncInput): Promise<EtsyListingSyncResult> {
-  let listingId = product.etsy_listing_id || (await createDraft(apiKey, accessToken, settings, product)).listingId;
+  let draft = product.etsy_listing_id
+    ? { listingId: product.etsy_listing_id, url: product.etsy_url || `https://www.etsy.com/listing/${product.etsy_listing_id}` }
+    : await createDraft(apiKey, accessToken, settings, product);
+  let listingId = draft.listingId;
   let recreatedDraft = false;
+  let createdDraft = !product.etsy_listing_id;
 
   try {
-    await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
+    if (!createdDraft || publish) await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
   } catch (error) {
     if (!(error instanceof EtsyApiError) || error.status !== 404 || !product.etsy_listing_id) throw error;
-    listingId = (await createDraft(apiKey, accessToken, settings, product)).listingId;
+    draft = await createDraft(apiKey, accessToken, settings, product);
+    listingId = draft.listingId;
     recreatedDraft = true;
-    await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
+    createdDraft = true;
+    if (publish) await updateListing({ apiKey, accessToken, shopId: settings.shopId, listingId, product, settings, publish });
   }
 
   const uploadedImages = await syncListingImages({ apiKey, accessToken, shopId: settings.shopId, listingId, product, media });
-  const url = product.etsy_listing_id === listingId && product.etsy_url ? product.etsy_url : `https://www.etsy.com/listing/${listingId}`;
+  const url = product.etsy_listing_id === listingId && product.etsy_url ? product.etsy_url : draft.url || `https://www.etsy.com/listing/${listingId}`;
   return { listingId, url, state: publish ? "active" : product.etsy_state || "draft", uploadedImages, recreatedDraft };
 }
 
@@ -78,7 +84,7 @@ async function updateListing({
   if (publish) body.set("state", "active");
 
   const response = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${listingId}`, {
-    method: "PUT",
+    method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/x-www-form-urlencoded",
