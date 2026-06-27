@@ -27,18 +27,27 @@ export async function createOpenAiResponse(body: OpenAiResponseBody) {
   if (!keys.length) throw new Error(openAiKeyMissingMessage());
 
   let lastError: unknown;
+  let triedBackup = false;
   for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
     try {
       return await createOpenAiResponseWithKey(keys[keyIndex], body);
     } catch (error) {
       lastError = error;
+      triedBackup = triedBackup || keyIndex > 0;
       if (!(error instanceof OpenAiRequestError) || !error.retryableWithBackup || keyIndex === keys.length - 1) {
-        throw error;
+        throw formatOpenAiFailure(error, triedBackup);
       }
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("OpenAI request failed.");
+  throw formatOpenAiFailure(lastError, triedBackup);
+}
+
+function formatOpenAiFailure(error: unknown, triedBackup: boolean) {
+  if (!triedBackup) return error instanceof Error ? error : new Error("OpenAI request failed.");
+
+  const message = error instanceof Error ? error.message : "OpenAI request failed.";
+  return new Error(`OpenAI request failed after trying both primary and backup keys: ${message}`);
 }
 
 async function createOpenAiResponseWithKey(openAiKey: string, body: OpenAiResponseBody) {
