@@ -2,6 +2,7 @@
 import { ProductForm } from "@/components/product-form";
 import { EtsyListingSyncPanel } from "@/components/etsy-listing-sync-panel";
 import { DriveMediaImportPanel } from "@/components/drive-media-import-panel";
+import { AiEtsyAutofillPanel } from "@/components/ai-etsy-autofill-panel";
 import { requireAdmin } from "@/lib/auth";
 import { getProductByIdForAdmin, getProductMedia } from "@/lib/data";
 
@@ -27,6 +28,7 @@ export default async function EditProductPage({ params }: Props) {
       </div>
       <div className="grid gap-5">
         <DriveMediaImportPanel imageCount={imageCount} product={product} />
+        <AiEtsyAutofillPanel product={product} />
         <EtsyListingSyncPanel imageCount={imageCount} product={product} />
         <ProductForm galleryMediaUrls={media.map((item) => item.url)} product={product} />
       </div>

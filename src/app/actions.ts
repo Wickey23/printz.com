@@ -1094,6 +1094,80 @@ export async function generateAiListing(
   }
 }
 
+export async function autofillProductEtsyFields(_: ActionState, formData: FormData): Promise<ActionState> {
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (!openAiKey) return failure("OPENAI_API_KEY is not configured.");
+
+  const id = textFromForm(formData, "product_id");
+  if (!id) return failure("Missing product id.");
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required.");
+
+  const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
+  if (error) return failure(error.message);
+  if (!data) return failure("Product not found.");
+
+  const product = data as Product;
+  const research = await getProductSheetResearch(product).catch(() => null);
+  const prompt = [
+    "You are filling missing Etsy-readiness fields for PRINTZ Team Official.",
+    "Use the product record and Google Sheet research to write buyer-facing, high-yield Etsy listing content.",
+    "Do not invent license certainty. If source rights are unclear, keep license_notes conservative.",
+    "Avoid protected artwork, logos, trademark-heavy claims, and copied source listing text.",
+    "Use researched keywords naturally in tags and copy, especially high-volume/low-competition phrases.",
+    "Return only valid JSON with this exact shape:",
+    "{\"price\":\"14.99\",\"short_description\":\"...\",\"full_description\":\"...\",\"materials\":\"...\",\"dimensions\":\"...\",\"tags\":\"tag one, tag two\",\"processing_time\":\"...\",\"care_instructions\":\"...\",\"customization_notes\":\"...\",\"personalization_enabled\":false,\"personalization_prompt\":\"...\",\"color_options\":\"...\",\"size_options\":\"...\",\"finish_options\":\"...\",\"license_notes\":\"...\"}",
+    "Rules:",
+    "- price must be a numeric string and should use sheet suggested price/range when available.",
+    "- full_description must cover use case, what is included, size expectations, material/finish expectations, customization, processing, and review-before-sale notes.",
+    "- materials must list filament/material and any included hardware or production caveat.",
+    "- dimensions must give a practical size range or 'custom sizes available; confirm final dimensions before ordering' when exact size is unknown.",
+    "- tags must include 8 to 13 Etsy-style search phrases, comma-separated, no duplicates.",
+    "- keep tags concise; avoid leading with trademarked brands unless unavoidable compatibility wording.",
+    "- processing_time should be a simple buyer-facing phrase.",
+    "- care_instructions should mention heat, cleaning, and normal 3D print layer lines when physical.",
+    "",
+    `Product JSON: ${JSON.stringify(product)}`,
+    `Sheet research JSON: ${JSON.stringify(research || {})}`,
+  ].join("\n");
+
+  try {
+    const result = await createOpenAiResponse(openAiKey, {
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      fallbackModel: "gpt-4.1-mini",
+      input: prompt,
+      max_output_tokens: 1800,
+    });
+    const text = typeof result.output_text === "string" ? result.output_text : extractResponseText(result) || "";
+    const draft = parseEtsyAutofillDraft(text);
+    if (!draft) return failure("The AI autofill response could not be parsed. Try again.");
+
+    const patch = buildEtsyAutofillPatch(product, draft);
+    if (!Object.keys(patch).length) {
+      return success("AI checked this product, but no missing Etsy readiness fields needed changes.");
+    }
+
+    const { error: updateError } = await supabase
+      .from("products")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", product.id);
+    if (updateError) return failure(updateError.message);
+
+    revalidatePath("/");
+    revalidatePath("/products");
+    revalidatePath("/admin");
+    revalidatePath(`/admin/products/${product.id}`);
+    if (product.slug) revalidatePath(`/products/${product.slug}`);
+
+    return success(`AI filled Etsy fields: ${Object.keys(patch).filter((key) => key !== "updated_at").join(", ")}.`);
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "AI Etsy autofill failed.");
+  }
+}
+
 export async function generateAiScoutListing(_: AiScoutState, formData: FormData): Promise<AiScoutState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
@@ -1309,6 +1383,113 @@ function parseAiDraft(text: string): AiListingDraft | null {
   } catch {
     return null;
   }
+}
+
+type EtsyAutofillDraft = {
+  price: string;
+  short_description: string;
+  full_description: string;
+  materials: string;
+  dimensions: string;
+  tags: string;
+  processing_time: string;
+  care_instructions: string;
+  customization_notes: string;
+  personalization_enabled: boolean;
+  personalization_prompt: string;
+  color_options: string;
+  size_options: string;
+  finish_options: string;
+  license_notes: string;
+};
+
+function parseEtsyAutofillDraft(text: string): EtsyAutofillDraft | null {
+  const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || text;
+
+  try {
+    const parsed = JSON.parse(jsonText) as Partial<EtsyAutofillDraft>;
+    return {
+      price: String(parsed.price || "").trim(),
+      short_description: String(parsed.short_description || "").trim(),
+      full_description: String(parsed.full_description || "").trim(),
+      materials: String(parsed.materials || "").trim(),
+      dimensions: String(parsed.dimensions || "").trim(),
+      tags: normalizeStringArray(String(parsed.tags || "").split(",")).slice(0, 13).join(", "),
+      processing_time: String(parsed.processing_time || "").trim(),
+      care_instructions: String(parsed.care_instructions || "").trim(),
+      customization_notes: String(parsed.customization_notes || "").trim(),
+      personalization_enabled: Boolean(parsed.personalization_enabled),
+      personalization_prompt: String(parsed.personalization_prompt || "").trim(),
+      color_options: normalizeStringArray(String(parsed.color_options || "").split(",")).join(", "),
+      size_options: normalizeStringArray(String(parsed.size_options || "").split(",")).join(", "),
+      finish_options: normalizeStringArray(String(parsed.finish_options || "").split(",")).join(", "),
+      license_notes: String(parsed.license_notes || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildEtsyAutofillPatch(product: Product, draft: EtsyAutofillDraft) {
+  const patch: Record<string, unknown> = {};
+  const price = Number(String(draft.price).replace(/[^0-9.]/g, ""));
+  const tags = normalizeStringArray(draft.tags.split(",")).slice(0, 13);
+  const colorOptions = normalizeStringArray(draft.color_options.split(","));
+  const sizeOptions = normalizeStringArray(draft.size_options.split(","));
+  const finishOptions = normalizeStringArray(draft.finish_options.split(","));
+
+  if ((!product.price || product.price <= 0) && Number.isFinite(price) && price > 0) patch.price = price;
+  if (isWeakText(product.short_description, 70) && draft.short_description) patch.short_description = draft.short_description.slice(0, 280);
+  if (isWeakText(product.full_description, 240) && draft.full_description) patch.full_description = draft.full_description.slice(0, 5000);
+  if (isWeakText(product.materials, 12) && draft.materials) patch.materials = draft.materials.slice(0, 1000);
+  if (isWeakText(product.dimensions, 12) && draft.dimensions) patch.dimensions = draft.dimensions.slice(0, 1000);
+  if ((product.tags || []).length < 8 && tags.length >= 5) patch.tags = tags;
+  if (isWeakText(product.processing_time, 10) && draft.processing_time) patch.processing_time = draft.processing_time.slice(0, 500);
+  if (isWeakText(product.care_instructions, 20) && draft.care_instructions) patch.care_instructions = draft.care_instructions.slice(0, 1500);
+  if (isWeakText(product.customization_notes, 30) && draft.customization_notes) patch.customization_notes = draft.customization_notes.slice(0, 1500);
+  if (!product.personalization_prompt && draft.personalization_prompt) patch.personalization_prompt = draft.personalization_prompt.slice(0, 1000);
+  if (!product.personalization_enabled && draft.personalization_enabled) patch.personalization_enabled = true;
+  if (!product.color_options?.length && colorOptions.length) patch.color_options = colorOptions;
+  if (!product.size_options?.length && sizeOptions.length) patch.size_options = sizeOptions;
+  if (!product.finish_options?.length && finishOptions.length) patch.finish_options = finishOptions;
+  if (isWeakText(product.license_notes, 20) && draft.license_notes) patch.license_notes = draft.license_notes.slice(0, 2000);
+
+  return patch;
+}
+
+function isWeakText(value: string | null | undefined, minLength: number) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  if (text.length < minLength) return true;
+  return /\b(confirm|tbd|todo|unknown|add details|see details|price on request)\b/i.test(text);
+}
+
+async function getProductSheetResearch(product: Product) {
+  const spreadsheetId = process.env.PRINTZ_PRODUCT_SHEET_ID || "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
+  const sheets = new GoogleSheetsClient({ spreadsheetId, env: process.env });
+  const rows = await sheets.getValues("'Product Intake'!A1:AH1000");
+  const [headers, ...body] = rows as string[][];
+  if (!headers?.length) return null;
+  const normalizedHeaders = headers.map((header) => String(header || "").trim());
+  const nameIndex = normalizedHeaders.indexOf("Name");
+  if (nameIndex < 0) return null;
+
+  const normalizedProductName = normalizeLookupText(product.name);
+  const normalizedSlugName = normalizeLookupText(product.slug);
+  const match = body.find((row) => {
+    const candidate = normalizeLookupText(row[nameIndex]);
+    return candidate && (candidate === normalizedProductName || candidate === normalizedSlugName);
+  });
+
+  if (!match) return null;
+
+  return Object.fromEntries(
+    normalizedHeaders.map((header, index) => [header, match[index] ?? ""]).filter(([header, value]) => header && value),
+  );
+}
+
+function normalizeLookupText(value: unknown) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function parseAiScout(text: string): Omit<AiScoutState, "ok" | "message" | "errors"> | null {
