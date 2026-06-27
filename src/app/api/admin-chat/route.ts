@@ -25,6 +25,8 @@ type AdminChatListingDraft = {
   materials?: string;
   dimensions?: string;
   customization_notes?: string;
+  personalization_enabled?: boolean;
+  personalization_prompt?: string;
   color_options?: string[] | string;
   size_options?: string[] | string;
   finish_options?: string[] | string;
@@ -55,10 +57,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: "Unauthorized." }, { status: 401 });
   }
 
-  if (!getOpenAiApiKeys().length) {
-    return NextResponse.json({ ok: false, message: openAiKeyMissingMessage() }, { status: 500 });
-  }
-
   const formData = await request.formData();
   const message = String(formData.get("message") || "").trim();
   const history = String(formData.get("history") || "").trim();
@@ -80,6 +78,12 @@ export async function POST(request: Request) {
         image_url: `data:${file.type};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`,
       })),
   );
+
+  if (!getOpenAiApiKeys().length) {
+    const fallback = await buildLocalProductEditResponse(adminSupabase, page);
+    if (fallback) return NextResponse.json(fallback);
+    return NextResponse.json({ ok: false, message: openAiKeyMissingMessage() }, { status: 500 });
+  }
 
   let result;
   try {
@@ -106,7 +110,9 @@ export async function POST(request: Request) {
                 "Whenever you recommend a product that could become a site listing, include a JSON object at the end of the response between PRINTZ_LISTING_JSON_START and PRINTZ_LISTING_JSON_END.",
                 "The JSON shape must be {\"listing_drafts\":[{\"name\":\"...\",\"short_description\":\"...\",\"full_description\":\"...\",\"category\":\"...\",\"price\":\"19.99\",\"main_image_url\":\"https://...\",\"gallery_media_urls\":[\"https://...\"],\"source_url\":\"https://...\",\"license_notes\":\"...\",\"rights_status\":\"Safe to create ourselves|Needs original remake|Needs license/permission|Avoid\",\"tags\":[\"tag1\"],\"materials\":\"...\",\"dimensions\":\"...\",\"customization_notes\":\"...\",\"color_options\":[\"Black\"],\"size_options\":[],\"finish_options\":[\"Standard\"],\"processing_time\":\"...\",\"care_instructions\":\"...\",\"preview_images\":[{\"url\":\"https://...\",\"source_url\":\"https://...\",\"label\":\"...\"}]}]}.",
                 "When the admin asks you to edit, improve, rewrite, optimize, fix, or update an existing product/listing and a current product context is provided, include action JSON between PRINTZ_ACTION_JSON_START and PRINTZ_ACTION_JSON_END.",
-                "Action JSON shape: {\"actions\":[{\"type\":\"update_product\",\"label\":\"Apply SEO rewrite\",\"summary\":\"What will change\",\"product_id\":\"current product id\",\"patch\":{\"name\":\"...\",\"short_description\":\"...\",\"full_description\":\"...\",\"price\":\"24.99\",\"tags\":[\"tag1\"],\"license_notes\":\"...\",\"active\":true,\"featured\":false,\"main_image_url\":\"https://...\",\"gallery_media_urls\":[\"https://...\"]}},{\"type\":\"create_etsy_draft\",\"label\":\"Create Etsy draft\",\"summary\":\"Creates a draft Etsy listing from this website product\",\"product_id\":\"product id\"}]}.",
+                "Before writing listing fields, silently check: buyer intent, what is included, sizing/dimensions, material and finish expectations, personalization, processing time, care, photo needs, rights/license risk, Etsy SEO tags, and whether the listing should stay inactive.",
+                "For product edits, write complete buyer-ready field values, not placeholders. Prefer concise, specific, Etsy-safe copy over hype. Mention review-needed rights conservatively when the source license is unclear.",
+                "Action JSON shape: {\"actions\":[{\"type\":\"update_product\",\"label\":\"Apply buyer-ready listing rewrite\",\"summary\":\"What will change\",\"product_id\":\"current product id\",\"patch\":{\"name\":\"...\",\"short_description\":\"...\",\"full_description\":\"...\",\"category\":\"...\",\"price\":\"24.99\",\"tags\":[\"tag1\"],\"materials\":\"...\",\"dimensions\":\"...\",\"customization_notes\":\"...\",\"personalization_enabled\":true,\"personalization_prompt\":\"...\",\"color_options\":[\"Black\"],\"size_options\":[\"Standard\"],\"finish_options\":[\"Standard\"],\"processing_time\":\"...\",\"care_instructions\":\"...\",\"license_notes\":\"...\",\"active\":false,\"featured\":false,\"main_image_url\":\"https://...\",\"gallery_media_urls\":[\"https://...\"]}},{\"type\":\"create_etsy_draft\",\"label\":\"Create Etsy draft\",\"summary\":\"Creates a draft Etsy listing from this website product\",\"product_id\":\"product id\"}]}.",
                 "When the admin asks to create an Etsy listing for a product that already exists in the app, propose a create_etsy_draft action. Do not claim it is published; Etsy API creates a draft that the admin can finish/review on Etsy.",
                 "For shop-wide rights audits, include update_product actions for products that should be flagged. Do not delete products. Prefer patching license_notes with the audit finding and active:false when rights are unclear, personal-use, copied, trademarked, or need a remake.",
                 "If the user specifically asks you to do it/apply it after a shop-wide audit, include action JSON even if the current page is not a product edit page.",
@@ -136,6 +142,8 @@ export async function POST(request: Request) {
       ],
     });
   } catch (error) {
+    const fallback = await buildLocalProductEditResponse(adminSupabase, page);
+    if (fallback) return NextResponse.json(fallback);
     return NextResponse.json(
       { ok: false, message: error instanceof Error ? error.message : "Admin assistant request failed." },
       { status: 500 },
@@ -304,6 +312,153 @@ function normalizeStringList(value: unknown) {
   return [];
 }
 
+async function buildLocalProductEditResponse(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  page: string,
+) {
+  if (!supabase) return null;
+  const productId = page.match(/^\/admin\/products\/([^/?#]+)/)?.[1];
+  if (!productId || productId === "new") return null;
+
+  const { data: product, error } = await supabase.from("products").select("*").eq("id", productId).maybeSingle();
+  if (error || !product) return null;
+
+  const action = buildLocalProductEditAction(product as Product);
+  return {
+    ok: true,
+    answer: [
+      "AI quota is blocked, so I used the no-cost local listing writer.",
+      "I prepared a field update that covers buyer use case, what is included, sizing, materials, customization, processing, care, tags, and conservative rights notes.",
+      "Review it, then click Apply edit to write these fields into the product.",
+    ].join("\n\n"),
+    listingDrafts: [],
+    actions: [action],
+  };
+}
+
+function buildLocalProductEditAction(product: Product): AdminChatAction {
+  const text = `${product.name} ${product.category} ${(product.tags || []).join(" ")}`.toLowerCase();
+  const category = product.category || "Functional Prints";
+  const price = product.price && product.price > 0 ? product.price.toFixed(2) : localDefaultPrice(category);
+  const materials = product.materials || localMaterials(product.name, category);
+  const dimensions = product.dimensions || "Custom sizes available; confirm final dimensions before ordering.";
+  const colorOptions = product.color_options?.length ? product.color_options : ["White", "Black", "Red", "Pink", "Blue", "Green"];
+  const sizeOptions = product.size_options?.length ? product.size_options : ["Standard"];
+  const finishOptions = product.finish_options?.length ? product.finish_options : ["Standard"];
+  const useCase = localBuyerUseCase(text);
+  const included = localIncluded(text);
+  const customization = product.customization_notes || localCustomization(text);
+  const rightsNote = product.source_url
+    ? "Source model/listing is attached. Verify commercial-use rights, attribution requirements, remix rules, and trademark risk before publishing or selling."
+    : "No third-party source is attached. Confirm this is an original PRINTZ design or that commercial selling rights are documented before publishing.";
+  const tags = localTags(product, category);
+
+  return {
+    type: "update_product",
+    label: "Apply buyer-ready listing fields",
+    summary: "Writes a buyer-ready title/description/details pass using local rules because paid AI quota is blocked.",
+    product_id: product.id,
+    patch: {
+      name: product.name,
+      short_description:
+        product.short_description && product.short_description.length > 70
+          ? product.short_description
+          : `${product.name} for ${useCase}. Made to order with practical color, size, and finish options.`,
+      full_description: [
+        `${product.name} is a made-to-order ${category.toLowerCase()} designed for ${useCase}.`,
+        `What is included: ${included}`,
+        `Sizing: ${dimensions}`,
+        `Materials: ${materials}`,
+        `Options: choose from ${colorOptions.join(", ")} colors, ${sizeOptions.join(", ")} sizing, and ${finishOptions.join(", ")} finish choices.`,
+        `Customization: ${customization}`,
+        "Buyer expectations: 3D printed items may show small layer lines and minor surface variation. Each item is made after review of the selected options.",
+        rightsNote,
+      ].join("\n\n"),
+      category,
+      price,
+      materials,
+      dimensions,
+      customization_notes: customization,
+      personalization_enabled: /custom|personal|name|photo|letter|initial/i.test(`${product.name} ${customization}`),
+      personalization_prompt: "Enter personalization text, color preference, size request, or custom notes if offered.",
+      color_options: colorOptions,
+      size_options: sizeOptions,
+      finish_options: finishOptions,
+      processing_time: product.processing_time || "Made to order in 2-4 business days",
+      care_instructions:
+        product.care_instructions ||
+        "Keep away from high heat and direct heat sources. Clean gently with a dry or slightly damp cloth. Do not place 3D printed items in a dishwasher unless explicitly listed as dishwasher safe.",
+      license_notes: product.license_notes || rightsNote,
+      tags,
+      active: product.active,
+      featured: product.featured,
+    },
+  };
+}
+
+function localDefaultPrice(category: string) {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("digital") || normalized.includes("printable")) return "4.99";
+  if (normalized.includes("decor") || normalized.includes("gift")) return "19.99";
+  if (normalized.includes("desk") || normalized.includes("organizer")) return "14.99";
+  return "12.99";
+}
+
+function localMaterials(name: string, category: string) {
+  const text = `${name} ${category}`.toLowerCase();
+  if (text.includes("cookie") || text.includes("food")) return "PLA or PETG; use a food-contact-safe production process only if marketed for food use.";
+  if (text.includes("lamp")) return "PLA or PETG printed shell; lighting hardware only if explicitly included in the final listing.";
+  if (text.includes("wall") || text.includes("shelf") || text.includes("hook")) return "PLA or PETG; mounting hardware is not included unless selected.";
+  return "PLA or PETG 3D printed plastic.";
+}
+
+function localBuyerUseCase(text: string) {
+  if (text.includes("cookie")) return "baking, party favors, classroom rewards, seasonal gifts, and personalized treats";
+  if (text.includes("lamp")) return "personalized room decor, nightstand styling, gifts, and custom photo keepsakes";
+  if (text.includes("pet")) return "pet owners, feeding stations, gift baskets, and personalized daily routines";
+  if (text.includes("shelf")) return "wall storage, display setups, small-space organization, and custom room decor";
+  if (text.includes("controller") || text.includes("gaming")) return "gaming desks, controller storage, entertainment centers, and gamer gifts";
+  if (text.includes("vase") || text.includes("planter")) return "home decor, desk styling, shelf displays, gifts, and seasonal arrangements";
+  return "gifting, desk setups, home organization, and custom functional use";
+}
+
+function localIncluded(text: string) {
+  if (text.includes("set")) return "one made-to-order set as described, with selected color/size options confirmed before production.";
+  if (text.includes("lamp")) return "one printed lamp body or custom lamp component as configured; electronics are included only when explicitly selected.";
+  if (text.includes("shelf") || text.includes("wall")) return "one printed item; mounting hardware is not included unless the listing says otherwise.";
+  return "one made-to-order 3D printed item with the selected options.";
+}
+
+function localCustomization(text: string) {
+  if (text.includes("cookie") || text.includes("personal") || text.includes("custom") || text.includes("name") || text.includes("photo")) {
+    return "Personalization can include requested text, initials, color, size, or simple custom notes when offered.";
+  }
+  return "Choose available color, size, and finish options. Message before ordering for custom sizing or special requests.";
+}
+
+function localTags(product: Product, category: string) {
+  const base = [
+    ...(product.tags || []),
+    category,
+    product.name,
+    "3d printed",
+    "custom gift",
+    "personalized gift",
+    "desk accessory",
+    "home organizer",
+    "made to order",
+    "teacher gift",
+    "unique gift",
+    "functional print",
+  ];
+
+  return normalizeStringList(base)
+    .map((tag) => tag.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim())
+    .filter((tag) => tag && tag.length <= 20)
+    .filter((tag, index, all) => all.indexOf(tag) === index)
+    .slice(0, 13);
+}
+
 async function getAdminContext(
   supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
   page: string,
@@ -435,8 +590,8 @@ async function updateProductFromAction(
     materials: patch.materials ?? current.materials ?? "",
     dimensions: patch.dimensions ?? current.dimensions ?? "",
     customization_notes: patch.customization_notes ?? current.customization_notes ?? "",
-    personalization_enabled: Boolean(current.personalization_enabled || patch.customization_notes),
-    personalization_prompt: current.personalization_prompt ?? "",
+    personalization_enabled: patch.personalization_enabled ?? Boolean(current.personalization_enabled || patch.customization_notes),
+    personalization_prompt: patch.personalization_prompt ?? current.personalization_prompt ?? "",
     color_options: patch.color_options ? normalizeStringList(patch.color_options).join(", ") : (current.color_options || []).join(", "),
     size_options: patch.size_options ? normalizeStringList(patch.size_options).join(", ") : (current.size_options || []).join(", "),
     finish_options: patch.finish_options ? normalizeStringList(patch.finish_options).join(", ") : (current.finish_options || []).join(", "),
