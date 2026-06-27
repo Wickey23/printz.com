@@ -24,7 +24,7 @@ export default async function EditProductPage({ params }: Props) {
         <h1 className="mt-2 text-4xl font-black text-zinc-50">Edit product</h1>
       </div>
       <div className="grid gap-5">
-        <EtsyListingSyncPanel product={product} />
+        <EtsyListingSyncPanel imageCount={media.filter((item) => item.media_type === "image").length + (product.main_image_url ? 1 : 0)} product={product} />
         <ProductForm galleryMediaUrls={media.map((item) => item.url)} product={product} />
       </div>
     </section>

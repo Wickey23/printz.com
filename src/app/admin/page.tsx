@@ -4,6 +4,7 @@ import { ProductSyncDryRunButton } from "@/components/product-sync-dry-run-butto
 import { DeactivateAllProductsPanel } from "@/components/deactivate-all-products-panel";
 import { requireAdmin } from "@/lib/auth";
 import { getAllProductsForAdmin, getProductSyncHealth, getSuggestionsForAdmin } from "@/lib/data";
+import { etsyReadinessLabel, getEtsyReadiness } from "@/lib/etsy-readiness";
 import { formatPrice } from "@/lib/utils";
 
 export default async function AdminPage() {
@@ -117,6 +118,7 @@ export default async function AdminPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-bold text-zinc-50">{product.name}</h3>
                     <span className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300">{product.category}</span>
+                    <EtsyReadinessBadge product={product} />
                     {!product.active ? <span className="rounded bg-red-500/15 px-2 py-1 text-xs text-red-200">Inactive</span> : null}
                     {product.featured ? <span className="rounded bg-amber-300/15 px-2 py-1 text-xs text-amber-200">Featured</span> : null}
                   </div>
@@ -206,4 +208,15 @@ function SyncPill({ label, ok }: { label: string; ok: boolean }) {
       <p className={ok ? "mt-1 text-sm font-bold text-emerald-200" : "mt-1 text-sm font-bold text-red-200"}>{ok ? "Ready" : "Needs setup"}</p>
     </div>
   );
+}
+
+function EtsyReadinessBadge({ product }: { product: Parameters<typeof getEtsyReadiness>[0] }) {
+  const readiness = getEtsyReadiness(product);
+  const className = readiness.readyToPublish
+    ? "rounded bg-emerald-400/15 px-2 py-1 text-xs text-emerald-200"
+    : readiness.readyToDraft
+      ? "rounded bg-amber-300/15 px-2 py-1 text-xs text-amber-200"
+      : "rounded bg-red-500/15 px-2 py-1 text-xs text-red-200";
+
+  return <span className={className}>Etsy: {etsyReadinessLabel(readiness)}</span>;
 }
