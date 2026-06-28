@@ -21,4 +21,4 @@ jobs:
           fi
           curl --fail --show-error --silent \
             -H "Authorization: Bearer ${PRINTZ_CRON_SECRET}" \
-            "${PRINTZ_SITE_URL%/}/api/cron/create-etsy-drafts?limit=10"
+            "${PRINTZ_SITE_URL%/}/api/cron/create-etsy-drafts?limit=20"

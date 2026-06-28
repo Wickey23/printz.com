@@ -17,7 +17,7 @@ export type EtsyDraftAutomationResult = {
 
 export async function createMissingEtsyDrafts({
   dryRun = false,
-  limit = 10,
+  limit = 20,
 }: {
   dryRun?: boolean;
   limit?: number;
