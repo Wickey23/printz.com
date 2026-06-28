@@ -186,6 +186,11 @@ function MarketResearchGenerator() {
             <Link className="mt-5 inline-flex text-sm font-bold text-amber-200" href="/admin/trends">
               Open saved report archive
             </Link>
+            {state.productId ? (
+              <Link className="ml-4 mt-5 inline-flex text-sm font-bold text-emerald-200" href={`/admin/products/${state.productId}`}>
+                Open created product draft
+              </Link>
+            ) : null}
           </div>
         )}
       </div>

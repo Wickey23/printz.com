@@ -5,14 +5,15 @@ import { redirect } from "next/navigation";
 import { contactSchema, productSchema, suggestionSchema } from "@/lib/schemas";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import { isApprovedAdmin } from "@/lib/auth";
-import { getAllowedAdminEmails } from "@/lib/config";
+import { categories, getAllowedAdminEmails } from "@/lib/config";
 import { createEtsyDraftFromProduct, etsyDraftRequirements } from "@/lib/etsy-drafts";
 import { createOrSyncEtsyListing, etsyListingRequirements } from "@/lib/etsy-listings";
+import { getEtsyReadiness } from "@/lib/etsy-readiness";
 import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken, setEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { syncEtsyListings } from "@/lib/etsy-sync";
 import { importProductsCsvText } from "@/lib/product-import";
 import { createOpenAiResponse, getOpenAiApiKeys, openAiKeyMissingMessage } from "@/lib/openai-response";
-import type { Product, ProductMedia } from "@/lib/types";
+import type { EtsyTrendRecommendedListing, EtsyTrendReport, Product, ProductMedia } from "@/lib/types";
 import { optionalTextFromForm, slugify, textFromForm } from "@/lib/utils";
 import { runProductCommandSync, syncDriveMedia } from "../../scripts/lib/product-command-sync.mjs";
 import { GoogleDriveClient } from "../../scripts/lib/google-drive-client.mjs";
@@ -78,6 +79,7 @@ export type AiMarketResearchReport = {
 
 export type AiMarketResearchState = ActionState & {
   report?: AiMarketResearchReport;
+  productId?: string;
 };
 
 export type EtsyDraftState = ActionState & {
@@ -922,6 +924,28 @@ export async function syncEtsyProducts(state: ActionState, formData: FormData): 
   }
 }
 
+export async function createProductFromTrendReport(formData: FormData) {
+  if (!(await assertAdmin())) return;
+
+  const reportId = textFromForm(formData, "report_id");
+  const supabase = createSupabaseAdminClient();
+  if (!reportId || !supabase) return;
+
+  const { data, error } = await supabase
+    .from("etsy_trend_reports")
+    .select("*")
+    .eq("id", reportId)
+    .maybeSingle();
+  if (error || !data) return;
+
+  const productId = await createOpportunityProductFromReport(data as EtsyTrendReport, supabase);
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/trends");
+  revalidatePath(`/admin/products/${productId}`);
+  redirect(`/admin/products/${productId}`);
+}
+
 export async function saveEtsyRuntimeSettings(state: ActionState, formData: FormData): Promise<ActionState> {
   void state;
 
@@ -1174,6 +1198,45 @@ export async function autofillProductEtsyFields(_: ActionState, formData: FormDa
   }
 }
 
+export async function automateProductListingDraft(_: ActionState, formData: FormData): Promise<ActionState> {
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  const id = textFromForm(formData, "product_id");
+  if (!id) return failure("Missing product id.");
+
+  const fillResult = await autofillProductEtsyFields({ ok: false, message: "" }, formData);
+  if (!fillResult.ok) return fillResult;
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required.");
+
+  const [{ data, error }, mediaResult] = await Promise.all([
+    supabase.from("products").select("*").eq("id", id).maybeSingle(),
+    supabase.from("product_media").select("*").eq("product_id", id).order("sort_order", { ascending: true }),
+  ]);
+  if (error) return failure(error.message);
+  if (!data) return failure("Product not found after AI fill.");
+
+  const product = data as Product;
+  const media = (mediaResult.data || []) as ProductMedia[];
+  const imageCount = media.filter((item) => item.media_type === "image").length + (product.main_image_url ? 1 : 0);
+  const readiness = getEtsyReadiness(product, { imageCount });
+  if (!readiness.readyToDraft) {
+    const missing = readiness.items
+      .filter((item) => item.level === "required" && !item.ok)
+      .map((item) => item.label)
+      .join(", ");
+    return success(`${fillResult.message} Etsy draft is waiting on: ${missing || "required fields"}. Add source/images or details, then run automation again.`);
+  }
+
+  const draftResult = await syncProductToAttachedEtsyListing(id, false);
+  if (!draftResult.ok) {
+    return failure(`${fillResult.message} AI fill succeeded, but Etsy draft creation needs attention: ${draftResult.message}`);
+  }
+
+  return success(`${fillResult.message} ${draftResult.message}`);
+}
+
 export async function generateAiScoutListing(_: AiScoutState, formData: FormData): Promise<AiScoutState> {
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
@@ -1244,6 +1307,8 @@ export async function generateAiMarketResearch(
     "Use current web information and prioritize Etsy-visible listing patterns, search language, listing packaging, price positioning, and buyer-facing presentation.",
     "PRINTZ focuses on digital products, 3D printed products, and hybrid ideas. Keep those at the forefront.",
     "Do not copy protected artwork. Do not claim private sales data. Clearly label visible signals and inferences.",
+    "The recommended listing may become an inactive website product draft before the actual MakerWorld/source product and photos are found.",
+    "Write the recommendation so missing source-specific fields can wait: exact dimensions, source license, exact material requirements, and final photos can be filled after the admin adds the source URL and images.",
     "Return only valid JSON with this exact shape:",
     "{\"report_date\":\"YYYY-MM-DD\",\"title\":\"...\",\"summary\":\"...\",\"top_trends\":[\"...\"],\"listing_ideas\":[\"...\"],\"recommended_listing\":{\"title\":\"...\",\"product_type\":\"Digital|3D Printed|Hybrid\",\"price\":\"...\",\"category\":\"...\",\"tags\":[\"...\"],\"description\":\"...\",\"files_or_variants\":\"...\",\"photo_plan\":\"...\",\"next_steps\":\"...\"},\"source_notes\":\"...\"}",
     "",
@@ -1275,19 +1340,158 @@ export async function generateAiMarketResearch(
     const supabase = createSupabaseAdminClient();
     if (!supabase) return failure("Supabase service role key is required to save the report.");
 
-    const { error } = await supabase.from("etsy_trend_reports").insert(report);
+    const { data: savedReport, error } = await supabase.from("etsy_trend_reports").insert(report).select("*").single();
     if (error) return failure(error.message);
 
+    const productId = savedReport
+      ? await createOpportunityProductFromReport(savedReport as EtsyTrendReport, supabase).catch(() => "")
+      : "";
+
+    revalidatePath("/admin");
     revalidatePath("/admin/trends");
+    if (productId) revalidatePath(`/admin/products/${productId}`);
 
     return {
       ok: true,
-      message: "Market research report generated and saved to Trend reports.",
+      message: productId
+        ? "Market research saved and an inactive product opportunity was created. Add source/images, then use AI fill before creating the Etsy draft."
+        : "Market research report generated and saved to Trend reports. Product draft creation needs review.",
       report,
+      productId,
     };
   } catch (error) {
     return failure(error instanceof Error ? error.message : "AI market research failed. Please try again.");
   }
+}
+
+async function createOpportunityProductFromReport(
+  report: EtsyTrendReport,
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+) {
+  const listing = report.recommended_listing || {};
+  const title = cleanOpportunityText(listing.title) || cleanOpportunityText(report.title) || "PRINTZ product opportunity";
+  const category = normalizeProductCategory(listing.category || listing.product_type || "");
+  const slug = await uniqueProductSlug(slugify(title), supabase);
+  const price = parseOpportunityPrice(listing.price);
+  const description = cleanOpportunityText(listing.description) || cleanOpportunityText(report.summary);
+  const tags = normalizeStringArray(listing.tags).length
+    ? normalizeStringArray(listing.tags).slice(0, 13)
+    : opportunityTags(report, listing, category);
+  const sourceNotes = [
+    "AI-created product opportunity from Etsy trend research.",
+    "Add the MakerWorld, Printables, or original source URL before selling.",
+    "Confirm commercial-use rights, attribution, and any modification limits before creating or publishing an Etsy listing.",
+    report.source_notes ? `Research notes: ${report.source_notes}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  const product = {
+    name: title,
+    slug,
+    short_description: summarizeOpportunity(description || `${title} product opportunity for PRINTZ.`),
+    full_description: [
+      description || `${title} is a researched product opportunity for PRINTZ.`,
+      listing.files_or_variants ? `Files or variants to plan: ${listing.files_or_variants}` : "",
+      listing.photo_plan ? `Photo plan: ${listing.photo_plan}` : "Photo plan: add original product photos after selecting or making the product.",
+      listing.next_steps ? `Next steps: ${listing.next_steps}` : "Next steps: find the product/source model, confirm rights, add images, then run AI fill.",
+      "Source and exact dimensions are intentionally pending until the real product/model is selected.",
+    ].filter(Boolean).join("\n\n"),
+    category,
+    price,
+    etsy_url: null,
+    main_image_url: null,
+    video_url: null,
+    materials: "Pending source model. Run AI fill after adding the MakerWorld/source URL.",
+    dimensions: "Pending source model. Run AI fill after source and product details are added.",
+    customization_notes: listing.files_or_variants || "Options will be finalized after the source product is selected.",
+    personalization_enabled: /personal|custom|name|initial/i.test(`${title} ${description} ${listing.files_or_variants || ""}`),
+    personalization_prompt: /personal|custom|name|initial/i.test(`${title} ${description} ${listing.files_or_variants || ""}`)
+      ? "Add personalization details after the product/source is selected."
+      : null,
+    color_options: ["Black", "White", "Custom color"],
+    size_options: ["Standard", "Custom size"],
+    finish_options: ["Standard"],
+    processing_time: "Made to order after source/product review",
+    care_instructions: "Final care notes will be filled after the actual product material and source model are selected.",
+    source_url: null,
+    license_notes: sourceNotes,
+    tags,
+    featured: false,
+    active: false,
+  };
+  const opsFields = {
+    workflow_status: "Research",
+    rights_status: "Needs Review",
+    media_status: "Missing",
+    pricing_status: price ? "Ready" : "Needs Inputs",
+  };
+
+  const { data, error } = await supabase
+    .from("products")
+    .insert({ ...product, ...opsFields })
+    .select("id")
+    .single();
+
+  if (!error && data?.id) return data.id as string;
+  if (!isMissingColumnError(error)) throw error;
+
+  const fallback = await supabase.from("products").insert(product).select("id").single();
+  if (fallback.error) throw fallback.error;
+  return fallback.data.id as string;
+}
+
+async function uniqueProductSlug(baseSlug: string, supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
+  const base = (baseSlug || "printz-product-opportunity").slice(0, 190);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const slug = attempt ? `${base}-${attempt + 1}` : base;
+    const { data } = await supabase.from("products").select("id").eq("slug", slug).maybeSingle();
+    if (!data) return slug;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+function normalizeProductCategory(value: string) {
+  const text = value.toLowerCase();
+  const exact = categories.find((category) => category.toLowerCase() === text);
+  if (exact) return exact;
+  if (text.includes("digital") || text.includes("download") || text.includes("printable")) return "Digital Products";
+  if (text.includes("desk") || text.includes("office") || text.includes("teacher")) return "Desk Accessories";
+  if (text.includes("decor") || text.includes("home") || text.includes("wall")) return "Decor";
+  if (text.includes("custom") || text.includes("personal")) return "Custom Orders";
+  if (text.includes("gift") || text.includes("collect")) return "Collectibles";
+  return "Functional Prints";
+}
+
+function parseOpportunityPrice(value?: string) {
+  const parsed = Number(String(value || "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function summarizeOpportunity(value: string) {
+  const clean = cleanOpportunityText(value);
+  if (clean.length <= 240) return clean;
+  return `${clean.slice(0, 237).trim()}...`;
+}
+
+function cleanOpportunityText(value?: string) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function opportunityTags(report: EtsyTrendReport, listing: EtsyTrendRecommendedListing, category: string) {
+  return normalizeStringArray([
+    ...(listing.title || "").split(/\s+/).slice(0, 4).join(" "),
+    category,
+    ...(report.top_trends || []).slice(0, 4),
+    ...(report.listing_ideas || []).slice(0, 4),
+    "3d printed",
+    "custom gift",
+    "made to order",
+  ]).map((tag) => tag.toLowerCase().slice(0, 20)).slice(0, 13);
+}
+
+function isMissingColumnError(error: unknown) {
+  const message = error && typeof error === "object" && "message" in error ? String(error.message) : "";
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+  return code === "PGRST204" || code === "42703" || /column .* does not exist|schema cache/i.test(message);
 }
 
 function extractResponseText(result: {
@@ -1495,7 +1699,7 @@ function isWeakText(value: string | null | undefined, minLength: number) {
   const text = String(value || "").trim();
   if (!text) return true;
   if (text.length < minLength) return true;
-  return /\b(confirm|tbd|todo|unknown|add details|see details|price on request)\b/i.test(text);
+  return /\b(confirm|tbd|todo|unknown|add details|see details|price on request|pending source|source model|opportunity draft|product opportunity|to be finalized|after source|after the source|final care notes)\b/i.test(text);
 }
 
 function researchText(research: Record<string, unknown> | null, key: string) {

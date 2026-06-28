@@ -10,6 +10,11 @@ This is the practical integration path for PRINTZ. Keep Etsy as the checkout and
   - Public/API-key mode refreshes active listings.
   - OAuth mode refreshes listing copy, price, images, active state, and deactivates website products when the Etsy listing is no longer active.
   - Vercel cron runs `/api/cron/sync-etsy` hourly when the deployment plan supports that schedule. The admin `/admin/etsy` sync button can be used immediately after editing Etsy.
+- AI opportunity automation.
+  - New market research saves a trend report and creates an inactive product opportunity from the recommended listing.
+  - Existing reports can create product drafts from `/admin/trends`.
+  - Product edit pages can run AI against the product plus Google Sheet research to fill Etsy-ready copy after source URLs and images are added.
+  - The “Use AI + create Etsy draft” action fills missing fields, checks readiness, and creates/syncs an Etsy draft only when required source, rights, price, and listing fields are present.
 - Basic Etsy draft creation from a site product.
 - Custom print requests can store quoted price and custom Etsy checkout URL.
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
+import { createProductFromTrendReport } from "@/app/actions";
 import { requireAdmin } from "@/lib/auth";
 import { getEtsyTrendReportsForAdmin } from "@/lib/data";
 import type { EtsyTrendRecommendedListing, EtsyTrendReport } from "@/lib/types";
@@ -94,7 +95,7 @@ function ReportAccordion({ report, defaultOpen }: { report: EtsyTrendReport; def
           <ListBlock title="Listing ideas" items={report.listing_ideas} />
         </div>
 
-        <RecommendedListing listing={listing} />
+        <RecommendedListing listing={listing} reportId={report.id} />
 
         {report.source_notes ? (
           <div className="mt-4 rounded-md border border-white/10 bg-zinc-950 p-4">
@@ -123,7 +124,7 @@ function ListBlock({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function RecommendedListing({ listing }: { listing: EtsyTrendRecommendedListing }) {
+function RecommendedListing({ listing, reportId }: { listing: EtsyTrendRecommendedListing; reportId: string }) {
   const rows = [
     ["Type", listing.product_type],
     ["Price", listing.price],
@@ -137,7 +138,17 @@ function RecommendedListing({ listing }: { listing: EtsyTrendRecommendedListing 
   return (
     <div className="mt-4 rounded-md border border-amber-300/20 bg-amber-300/[0.06] p-4">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-200">Best listing to make next</p>
-      <h3 className="mt-2 text-xl font-black text-zinc-50">{listing.title || "No recommended listing recorded"}</h3>
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+        <h3 className="text-xl font-black text-zinc-50">{listing.title || "No recommended listing recorded"}</h3>
+        {listing.title ? (
+          <form action={createProductFromTrendReport}>
+            <input name="report_id" type="hidden" value={reportId} />
+            <button className="inline-flex h-10 items-center rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950" type="submit">
+              Create product draft
+            </button>
+          </form>
+        ) : null}
+      </div>
       {listing.description ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{listing.description}</p> : null}
       {rows.length ? (
         <dl className="mt-4 grid gap-3 md:grid-cols-2">
