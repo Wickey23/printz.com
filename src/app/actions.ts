@@ -90,6 +90,35 @@ export type BulkOpportunityDraftState = ActionState & {
 
 const bulkOpportunitySettingsCookie = "printz_bulk_opportunity_settings";
 
+export type ProductResearchPipelineRow = {
+  rowNumber: number;
+  product: string;
+  category: string;
+  priority: string;
+  status: string;
+  opportunityScore: number | null;
+  confidence: number | null;
+  commercialUse: string;
+  sourceQuality: string;
+  modelLink: string;
+  nextAction: string;
+  selectionScore: number;
+  canDraft: boolean;
+  blockReason: string;
+};
+
+export type ProductResearchPipeline = {
+  ok: boolean;
+  message: string;
+  spreadsheetInput: string;
+  sheetName: string;
+  totalRows: number;
+  topOpportunities: ProductResearchPipelineRow[];
+  licenseReviewQueue: ProductResearchPipelineRow[];
+  readyToPrintQueue: ProductResearchPipelineRow[];
+  draftReadyQueue: ProductResearchPipelineRow[];
+};
+
 export type EtsyDraftState = ActionState & {
   listingUrl?: string;
   uploadedImages?: number;
@@ -964,22 +993,25 @@ export async function createOpportunityDraftsFromChatsSheet(
   if (!supabase) return failure("Supabase service role key is required.");
 
   const spreadsheetInput = optionalTextFromForm(formData, "spreadsheet_id") || process.env.PRINTZ_PRODUCT_SHEET_ID || "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
-  const spreadsheetId = spreadsheetIdFromInput(spreadsheetInput);
+  const spreadsheetRef = spreadsheetRefFromInput(spreadsheetInput);
+  const spreadsheetId = spreadsheetRef.id;
   const requestedSheet = optionalTextFromForm(formData, "sheet_name");
   const limit = clampNumber(textFromForm(formData, "limit"), 1, 100, 20);
+  const allowReviewDrafts = formData.get("allow_review_drafts") === "on";
   await saveBulkOpportunitySettings({
     spreadsheetInput,
     sheetName: requestedSheet || "",
     limit,
+    allowReviewDrafts,
   });
 
   try {
     const sheets = new GoogleSheetsClient({ spreadsheetId, env: process.env });
-    const sheetName = requestedSheet || await findSheetName(sheets, ["chat", "opportunit", "trend"]);
+    const sheetName = await resolveSheetName(sheets, { requestedSheet, gid: spreadsheetRef.gid });
     if (!sheetName) return failure("Could not find a chats/opportunities sheet tab. Enter the tab name and try again.");
 
     const rows = await sheets.getValues(`${quoteSheetName(sheetName)}!A1:AZ500`);
-    const opportunities = rowsToOpportunityReports(rows, sheetName).slice(0, limit);
+    const opportunities = rowsToOpportunityReports(rows, sheetName, { allowReviewDrafts }).slice(0, limit);
     if (!opportunities.length) {
       return failure(`No high-opportunity product rows found in ${sheetName}. Add title/name plus opportunity score, priority, or status columns.`);
     }
@@ -1014,26 +1046,28 @@ export async function createOpportunityDraftsFromChatsSheet(
 export async function getBulkOpportunitySettings() {
   const cookieStore = await cookies();
   const raw = cookieStore.get(bulkOpportunitySettingsCookie)?.value;
-  if (!raw) return { spreadsheetInput: "", sheetName: "", limit: "20" };
+  if (!raw) return { spreadsheetInput: "", sheetName: "chats list", limit: "20", allowReviewDrafts: false };
 
   try {
     const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as {
       spreadsheetInput?: string;
       sheetName?: string;
       limit?: number | string;
+      allowReviewDrafts?: boolean;
     };
 
     return {
       spreadsheetInput: String(parsed.spreadsheetInput || ""),
-      sheetName: String(parsed.sheetName || ""),
+      sheetName: String(parsed.sheetName || "chats list"),
       limit: String(parsed.limit || "20"),
+      allowReviewDrafts: Boolean(parsed.allowReviewDrafts),
     };
   } catch {
-    return { spreadsheetInput: "", sheetName: "", limit: "20" };
+    return { spreadsheetInput: "", sheetName: "chats list", limit: "20", allowReviewDrafts: false };
   }
 }
 
-async function saveBulkOpportunitySettings(settings: { spreadsheetInput: string; sheetName: string; limit: number }) {
+async function saveBulkOpportunitySettings(settings: { spreadsheetInput: string; sheetName: string; limit: number; allowReviewDrafts: boolean }) {
   const cookieStore = await cookies();
   cookieStore.set(
     bulkOpportunitySettingsCookie,
@@ -1046,6 +1080,52 @@ async function saveBulkOpportunitySettings(settings: { spreadsheetInput: string;
       maxAge: 365 * 24 * 60 * 60,
     },
   );
+}
+
+export async function getProductResearchPipeline(): Promise<ProductResearchPipeline> {
+  if (!(await assertAdmin())) {
+    return emptyProductResearchPipeline("Unauthorized.");
+  }
+
+  const settings = await getBulkOpportunitySettings();
+  const spreadsheetInput = settings.spreadsheetInput || process.env.PRINTZ_PRODUCT_SHEET_ID || "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
+  const spreadsheetRef = spreadsheetRefFromInput(spreadsheetInput);
+
+  try {
+    const sheets = new GoogleSheetsClient({ spreadsheetId: spreadsheetRef.id, env: process.env });
+    const sheetName = await resolveSheetName(sheets, { requestedSheet: settings.sheetName, gid: spreadsheetRef.gid });
+    if (!sheetName) return emptyProductResearchPipeline("Could not resolve the product research sheet tab.");
+
+    const rows = await sheets.getValues(`${quoteSheetName(sheetName)}!A1:AZ500`);
+    const pipelineRows = rowsToPipelineRows(rows);
+    return {
+      ok: true,
+      message: `Loaded ${pipelineRows.length} product research row${pipelineRows.length === 1 ? "" : "s"} from ${sheetName}.`,
+      spreadsheetInput,
+      sheetName,
+      totalRows: pipelineRows.length,
+      topOpportunities: pipelineRows.filter((row) => row.canDraft).slice(0, 12),
+      licenseReviewQueue: pipelineRows.filter((row) => /review|manual|unknown|needs/i.test(`${row.sourceQuality} ${row.commercialUse} ${row.blockReason}`)).slice(0, 12),
+      readyToPrintQueue: pipelineRows.filter((row) => /ready to print|print next|ready/i.test(`${row.status} ${row.nextAction}`) && row.canDraft).slice(0, 12),
+      draftReadyQueue: pipelineRows.filter((row) => row.canDraft && row.modelLink).slice(0, 12),
+    };
+  } catch (error) {
+    return emptyProductResearchPipeline(error instanceof Error ? error.message : "Could not load product research pipeline.");
+  }
+}
+
+function emptyProductResearchPipeline(message: string): ProductResearchPipeline {
+  return {
+    ok: false,
+    message,
+    spreadsheetInput: "",
+    sheetName: "",
+    totalRows: 0,
+    topOpportunities: [],
+    licenseReviewQueue: [],
+    readyToPrintQueue: [],
+    draftReadyQueue: [],
+  };
 }
 
 export async function saveEtsyRuntimeSettings(state: ActionState, formData: FormData): Promise<ActionState> {
@@ -1475,6 +1555,7 @@ async function createOpportunityProductFromReport(
   const existingProductId = await findProductIdByName(title, supabase);
   if (existingProductId) return existingProductId;
   const category = normalizeProductCategory(listing.category || listing.product_type || "");
+  const sourceUrl = sourceUrlFromReport(report);
   const slug = await uniqueProductSlug(slugify(title), supabase);
   const price = parseOpportunityPrice(listing.price);
   const description = cleanOpportunityText(listing.description) || cleanOpportunityText(report.summary);
@@ -1483,7 +1564,7 @@ async function createOpportunityProductFromReport(
     : opportunityTags(report, listing, category);
   const sourceNotes = [
     "AI-created product opportunity from Etsy trend research.",
-    "Add the MakerWorld, Printables, or original source URL before selling.",
+    sourceUrl ? `Source/model URL from research: ${sourceUrl}` : "Add the MakerWorld, Printables, or original source URL before selling.",
     "Confirm commercial-use rights, attribution, and any modification limits before creating or publishing an Etsy listing.",
     report.source_notes ? `Research notes: ${report.source_notes}` : "",
   ].filter(Boolean).join("\n\n");
@@ -1516,7 +1597,7 @@ async function createOpportunityProductFromReport(
     finish_options: ["Standard"],
     processing_time: "Made to order after source/product review",
     care_instructions: "Final care notes will be filled after the actual product material and source model are selected.",
-    source_url: null,
+    source_url: sourceUrl || null,
     license_notes: sourceNotes,
     tags,
     featured: false,
@@ -1550,28 +1631,120 @@ async function findProductIdByName(name: string, supabase: NonNullable<ReturnTyp
   return data?.id ? String(data.id) : "";
 }
 
-async function findSheetName(sheets: GoogleSheetsClient, needles: string[]) {
-  const metadata = await sheets.request(`https://sheets.googleapis.com/v4/spreadsheets/${sheets.id}?fields=sheets(properties(title))`);
-  const names = ((metadata?.sheets || []) as Array<{ properties?: { title?: string } }>)
-    .map((sheet) => sheet.properties?.title || "")
-    .filter(Boolean);
+async function resolveSheetName(sheets: GoogleSheetsClient, { requestedSheet, gid }: { requestedSheet?: string | null; gid?: string }) {
+  const metadata = await sheets.request(`https://sheets.googleapis.com/v4/spreadsheets/${sheets.id}?fields=sheets(properties(sheetId,title))`);
+  const sheetsList = ((metadata?.sheets || []) as Array<{ properties?: { sheetId?: number; title?: string } }>)
+    .map((sheet) => ({ id: String(sheet.properties?.sheetId ?? ""), title: sheet.properties?.title || "" }))
+    .filter((sheet) => sheet.title);
+  const requested = cleanOpportunityText(requestedSheet || "");
 
-  return names.find((name) => needles.some((needle) => name.toLowerCase().includes(needle))) || "";
+  if (requested) {
+    const exact = sheetsList.find((sheet) => sheet.title.toLowerCase() === requested.toLowerCase());
+    if (exact) return exact.title;
+    const contains = sheetsList.find((sheet) => sheet.title.toLowerCase().includes(requested.toLowerCase()));
+    if (contains) return contains.title;
+  }
+
+  if (gid) {
+    const byGid = sheetsList.find((sheet) => sheet.id === gid);
+    if (byGid) return byGid.title;
+  }
+
+  return sheetsList.find((sheet) => /chat|opportunit|trend|research/i.test(sheet.title))?.title || "";
 }
 
-function rowsToOpportunityReports(rows: unknown[][], sheetName: string): EtsyTrendReport[] {
+function rowsToOpportunityReports(rows: unknown[][], sheetName: string, options: { allowReviewDrafts: boolean }): EtsyTrendReport[] {
+  return rowsToPipelineRows(rows)
+    .filter((row) => shouldCreateDraftFromPipelineRow(row, options))
+    .map((row) => pipelineRowToOpportunityReport(row, sheetName))
+    .sort((a, b) => opportunityScore(b) - opportunityScore(a));
+}
+
+function rowsToPipelineRows(rows: unknown[][]): ProductResearchPipelineRow[] {
   const [headerRow, ...bodyRows] = rows;
   const headers = (headerRow || []).map((value) => normalizeSheetHeader(String(value || "")));
   if (!headers.length) return [];
 
   return bodyRows
-    .map((row, index) => rowToOpportunityReport(headers, row, index + 2, sheetName))
-    .filter((report): report is EtsyTrendReport => Boolean(report))
-    .sort((a, b) => opportunityScore(b) - opportunityScore(a));
+    .map((row, index) => rowToPipelineRow(headers, row, index + 2))
+    .filter((row): row is ProductResearchPipelineRow => Boolean(row))
+    .sort((a, b) => b.selectionScore - a.selectionScore);
 }
 
-function rowToOpportunityReport(headers: string[], row: unknown[], rowNumber: number, sheetName: string): EtsyTrendReport | null {
-  const value = (...aliases: string[]) => {
+function rowToPipelineRow(headers: string[], row: unknown[], rowNumber: number): ProductResearchPipelineRow | null {
+  const value = rowValue(headers, row);
+  const product = value("product", "product name", "title", "name", "listing title", "recommended listing", "idea", "product idea");
+  if (!product) return null;
+
+  const commercialUse = value("commercial use", "commercial sale allowed", "can sell", "sellable");
+  const license = value("license", "license type", "exact license");
+  const status = value("status", "workflow status", "next status");
+  const priority = value("priority", "shop priority", "rank", "tier");
+  const sourceQuality = classifySourceQuality({ commercialUse, license, status });
+  const blockReason = draftBlockReason({ commercialUse, license, status, sourceQuality });
+  const opportunityScore = numberFromText(value("opportunity score", "ai opportunity score", "score", "viability score"));
+  const confidence = numberFromText(value("confidence", "ai confidence", "confidence %"));
+  const keywordScore = numberFromText(value("keyword score", "ai keyword score estimate"));
+  const selectionScore = calculatePipelineSelectionScore({
+    opportunityScore,
+    confidence,
+    keywordScore,
+    priority,
+    status,
+    commercialUse,
+    sourceQuality,
+    competition: value("competition", "etsy saturation", "ai competition estimate"),
+    personalization: value("personalization"),
+    printTime: value("print time", "estimated print hours"),
+    evergreen: value("evergreen/seasonal", "evergreen", "seasonality"),
+  });
+
+  return {
+    rowNumber,
+    product,
+    category: value("category"),
+    priority,
+    status,
+    opportunityScore,
+    confidence,
+    commercialUse,
+    sourceQuality,
+    modelLink: value("model link", "model source", "source url", "maker world link", "makerworld link", "printables link"),
+    nextAction: value("next action", "action", "todo"),
+    selectionScore,
+    canDraft: !blockReason,
+    blockReason,
+  };
+}
+
+function pipelineRowToOpportunityReport(row: ProductResearchPipelineRow, sheetName: string): EtsyTrendReport {
+  const reportDate = todayInNewYork();
+
+  return {
+    id: `sheet:${sheetName}:${row.rowNumber}`,
+    report_date: reportDate,
+    title: `${row.product} opportunity`,
+    summary: `${row.product} scored ${Math.round(row.selectionScore)} in the Product Research pipeline. ${row.nextAction || "Review source, license, and listing strategy."}`,
+    top_trends: [row.priority, row.status, row.sourceQuality].filter(Boolean),
+    listing_ideas: [row.nextAction].filter(Boolean),
+    recommended_listing: {
+      title: row.product,
+      product_type: "3D Printed",
+      price: "",
+      category: row.category,
+      tags: [],
+      description: `${row.product} was selected from ${sheetName} as a high-opportunity PRINTZ product draft.`,
+      files_or_variants: "",
+      photo_plan: "Add original photos after finding or printing the product. Reference images are internal only.",
+      next_steps: row.nextAction || "Find/confirm source model, verify license, add images, then run AI fill.",
+    },
+    source_notes: `Imported from ${sheetName} row ${row.rowNumber}. Selection score: ${Math.round(row.selectionScore)}. Opportunity score: ${row.opportunityScore ?? "not provided"}. Confidence: ${row.confidence ?? "not provided"}. Commercial use: ${row.commercialUse || "not provided"}. Source quality: ${row.sourceQuality}. Model link: ${row.modelLink || "not provided"}.`,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function rowValue(headers: string[], row: unknown[]) {
+  return (...aliases: string[]) => {
     for (const alias of aliases.map(normalizeSheetHeader)) {
       const index = headers.indexOf(alias);
       if (index >= 0) {
@@ -1581,50 +1754,85 @@ function rowToOpportunityReport(headers: string[], row: unknown[], rowNumber: nu
     }
     return "";
   };
-  const title = value("listing title", "recommended listing", "product title", "product name", "name", "idea", "product idea", "opportunity", "chat title");
-  if (!title) return null;
-
-  const scoreText = value("opportunity score", "viability score", "keyword score", "score", "priority score", "value score");
-  const priority = value("priority", "opportunity", "status", "rank", "tier");
-  const score = numberFromText(scoreText);
-  const isHighOpportunity =
-    (score !== null && score >= 70) ||
-    /\b(high|highest|top|yes|ready|create|draft|winner|priority|a\b|s\b)\b/i.test(priority) ||
-    rowNumber <= 11;
-  if (!isHighOpportunity) return null;
-
-  const description = value("description", "listing description", "summary", "notes", "chat summary", "answer") ||
-    `${title} was flagged as a high-opportunity product in ${sheetName}.`;
-  const tags = splitList(value("tags", "keywords", "search terms", "etsy tags", "keyword")).slice(0, 13);
-  const reportDate = todayInNewYork();
-
-  return {
-    id: `sheet:${sheetName}:${rowNumber}`,
-    report_date: reportDate,
-    title: `${title} opportunity`,
-    summary: description,
-    top_trends: splitList(value("trend", "trends", "top trends", "market signals", "why it is high value")),
-    listing_ideas: splitList(value("listing ideas", "variants", "angle", "angles", "product variations")),
-    recommended_listing: {
-      title,
-      product_type: value("product type", "type") || "3D Printed",
-      price: value("price", "suggested price", "target price"),
-      category: value("category", "site category"),
-      tags,
-      description,
-      files_or_variants: value("files or variants", "variants", "options", "variation plan"),
-      photo_plan: value("photo plan", "images", "media plan") || "Add original photos after finding or printing the product.",
-      next_steps: value("next steps", "todo", "action", "action items") || "Find MakerWorld/source model, verify rights, add images, then run AI fill.",
-    },
-    source_notes: `Imported from ${sheetName} row ${rowNumber}. Score: ${scoreText || "not provided"}. Priority/status: ${priority || "not provided"}.`,
-    created_at: new Date().toISOString(),
-  };
 }
 
-function spreadsheetIdFromInput(value: string) {
+function shouldCreateDraftFromPipelineRow(row: ProductResearchPipelineRow, options: { allowReviewDrafts: boolean }) {
+  if (!row.product) return false;
+  if (row.blockReason && !(options.allowReviewDrafts && /manual|review|unknown/i.test(row.blockReason))) return false;
+  return row.selectionScore >= 45 || /\bhigh|highest|top|ready|print next|draft|priority\b/i.test(`${row.priority} ${row.status} ${row.nextAction}`);
+}
+
+function draftBlockReason({ commercialUse, license, status, sourceQuality }: { commercialUse: string; license: string; status: string; sourceQuality: string }) {
+  const text = `${commercialUse} ${license} ${status} ${sourceQuality}`.toLowerCase();
+  if (/\b(non[\s-]?commercial|cc[\s-]?by[\s-]?nc|\bnc\b|cannot sell|do not sell|no commercial|rejected)\b/i.test(text)) return "Non-commercial / cannot sell";
+  if (/\bneeds license review|needs manual|unknown|unverified|manual verification|needs review\b/i.test(text)) return "Needs manual verification";
+  if (commercialUse && !/\byes|allowed|commercial|cc0|public domain\b/i.test(commercialUse)) return "Commercial use not confirmed";
+  return "";
+}
+
+function classifySourceQuality({ commercialUse, license, status }: { commercialUse: string; license: string; status: string }) {
+  const text = `${commercialUse} ${license} ${status}`.toLowerCase();
+  if (/\bshop owned|shop-owned|cad|original\b/i.test(text)) return "Shop-owned CAD";
+  if (/\b(non[\s-]?commercial|cc[\s-]?by[\s-]?nc|\bnc\b|cannot sell|no commercial)\b/i.test(text)) return "Non-commercial reject";
+  if (/\bcc0|public domain\b/i.test(text)) return "Verified commercial model";
+  if (/\bcc[\s-]?by[\s-]?sa|sharealike|share alike\b/i.test(text)) return "ShareAlike required";
+  if (/\bcc[\s-]?by[\s-]?nd|no derivatives|no-derivatives\b/i.test(text)) return "No-derivatives / unmodified only";
+  if (/\bcc[\s-]?by|attribution required|attribution\b/i.test(text)) return "Attribution required";
+  if (/\byes|commercial use allowed|allowed|verified|approved\b/i.test(text)) return "Verified commercial model";
+  return "Needs manual verification";
+}
+
+function calculatePipelineSelectionScore({
+  commercialUse,
+  competition,
+  confidence,
+  evergreen,
+  keywordScore,
+  opportunityScore,
+  personalization,
+  printTime,
+  priority,
+  sourceQuality,
+  status,
+}: {
+  commercialUse: string;
+  competition: string;
+  confidence: number | null;
+  evergreen: string;
+  keywordScore: number | null;
+  opportunityScore: number | null;
+  personalization: string;
+  printTime: string;
+  priority: string;
+  sourceQuality: string;
+  status: string;
+}) {
+  const demand = opportunityScore ?? keywordScore ?? 50;
+  const lowCompetition = /low|easy|weak/i.test(competition) ? 100 : /high|saturated/i.test(competition) ? 25 : 60;
+  const profit = 65;
+  const personalizationScore = /yes|high|personal|custom|name/i.test(personalization) ? 100 : 45;
+  const licenseSafety = sourceQuality === "Verified commercial model" || /yes|allowed/i.test(commercialUse)
+    ? 100
+    : sourceQuality === "Attribution required" || sourceQuality === "ShareAlike required"
+      ? 75
+      : sourceQuality === "Needs manual verification"
+        ? 35
+        : 0;
+  const evergreenScore = /evergreen|year round|all year/i.test(evergreen) ? 100 : /season/i.test(evergreen) ? 55 : 70;
+  const time = numberFromText(printTime);
+  const printScore = time === null ? 60 : time <= 3 ? 100 : time <= 7 ? 70 : 40;
+  const base = demand * 0.3 + lowCompetition * 0.2 + profit * 0.15 + personalizationScore * 0.1 + licenseSafety * 0.1 + evergreenScore * 0.1 + printScore * 0.05;
+  const priorityBoost = /\bhigh|highest|top|s\b|a\b|priority\b/i.test(priority) ? 10 : 0;
+  const statusBoost = /\bready to print|ready to design|ready to verify|draft ready|print next\b/i.test(status) ? 8 : 0;
+  const confidenceAdjustment = confidence === null ? 0 : Math.max(-10, Math.min(10, (confidence - 70) / 3));
+  return Math.max(0, Math.min(100, base + priorityBoost + statusBoost + confidenceAdjustment));
+}
+
+function spreadsheetRefFromInput(value: string) {
   const trimmed = value.trim();
-  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return match?.[1] || trimmed;
+  const idMatch = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const gidMatch = trimmed.match(/[?&#]gid=([0-9]+)/);
+  return { id: idMatch?.[1] || trimmed, gid: gidMatch?.[1] || "" };
 }
 
 function opportunityScore(report: EtsyTrendReport) {
@@ -1671,9 +1879,14 @@ function cleanOpportunityText(value?: string) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function sourceUrlFromReport(report: EtsyTrendReport) {
+  const text = `${report.source_notes || ""} ${report.summary || ""}`;
+  return text.match(/https?:\/\/[^\s)]+/i)?.[0] || "";
+}
+
 function opportunityTags(report: EtsyTrendReport, listing: EtsyTrendRecommendedListing, category: string) {
   return normalizeStringArray([
-    ...(listing.title || "").split(/\s+/).slice(0, 4).join(" "),
+    (listing.title || "").split(/\s+/).slice(0, 4).join(" "),
     category,
     ...(report.top_trends || []).slice(0, 4),
     ...(report.listing_ideas || []).slice(0, 4),

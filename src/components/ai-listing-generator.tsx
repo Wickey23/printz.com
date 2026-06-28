@@ -12,6 +12,8 @@ import {
   type AiMarketResearchState,
   type AiScoutState,
   type BulkOpportunityDraftState,
+  type ProductResearchPipeline,
+  type ProductResearchPipelineRow,
 } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField, SubmitButton, TextArea } from "@/components/form-controls";
@@ -41,14 +43,17 @@ const initialBulkDraftState: BulkOpportunityDraftState = {
 
 export function AiListingGenerator({
   bulkOpportunitySettings = { spreadsheetInput: "", sheetName: "", limit: "20" },
+  pipeline,
 }: {
-  bulkOpportunitySettings?: { spreadsheetInput: string; sheetName: string; limit: string };
+  bulkOpportunitySettings?: { spreadsheetInput: string; sheetName: string; limit: string; allowReviewDrafts?: boolean };
+  pipeline?: ProductResearchPipeline;
 }) {
   const [state, formAction, pending] = useActionState(generateAiListing, initialAiState);
 
   return (
     <div className="grid gap-8">
       <BulkOpportunityDrafts settings={bulkOpportunitySettings} />
+      {pipeline ? <ProductResearchPipelineDashboard pipeline={pipeline} /> : null}
       <AdminScoutBot />
       <MarketResearchGenerator />
 
@@ -95,7 +100,7 @@ export function AiListingGenerator({
   );
 }
 
-function BulkOpportunityDrafts({ settings }: { settings: { spreadsheetInput: string; sheetName: string; limit: string } }) {
+function BulkOpportunityDrafts({ settings }: { settings: { spreadsheetInput: string; sheetName: string; limit: string; allowReviewDrafts?: boolean } }) {
   const [state, formAction, pending] = useActionState(createOpportunityDraftsFromChatsSheet, initialBulkDraftState);
 
   return (
@@ -112,6 +117,10 @@ function BulkOpportunityDrafts({ settings }: { settings: { spreadsheetInput: str
         <Field defaultValue={settings.sheetName} label="Tab name" name="sheet_name" placeholder="Chats List, Chat List, Opportunities..." />
         <Field defaultValue={settings.limit || "20"} label="Max drafts" name="limit" type="number" />
         <SubmitButton pending={pending}>Create Drafts</SubmitButton>
+        <label className="flex items-center gap-2 text-sm font-semibold text-zinc-300 md:col-span-4">
+          <input defaultChecked={settings.allowReviewDrafts || false} name="allow_review_drafts" type="checkbox" />
+          Allow inactive review drafts for rows that need manual license verification
+        </label>
       </form>
       {state.message ? (
         <p className={state.ok ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-red-300"}>
@@ -119,6 +128,72 @@ function BulkOpportunityDrafts({ settings }: { settings: { spreadsheetInput: str
         </p>
       ) : null}
     </section>
+  );
+}
+
+function ProductResearchPipelineDashboard({ pipeline }: { pipeline: ProductResearchPipeline }) {
+  return (
+    <section className="grid gap-5 rounded-lg border border-white/10 bg-zinc-900/70 p-5 sm:p-7">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Product Research Pipeline</p>
+          <h2 className="mt-2 text-2xl font-black text-zinc-50">Research-to-listing command center</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
+            {pipeline.ok ? pipeline.message : `Pipeline unavailable: ${pipeline.message}`}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <PipelineStat label="Rows" value={pipeline.totalRows} />
+          <PipelineStat label="Top" value={pipeline.topOpportunities.length} />
+          <PipelineStat label="License" value={pipeline.licenseReviewQueue.length} />
+          <PipelineStat label="Draft Ready" value={pipeline.draftReadyQueue.length} />
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <PipelineQueue title="Top opportunities" rows={pipeline.topOpportunities} />
+        <PipelineQueue title="License review queue" rows={pipeline.licenseReviewQueue} />
+        <PipelineQueue title="Ready to print queue" rows={pipeline.readyToPrintQueue} />
+        <PipelineQueue title="Draft ready queue" rows={pipeline.draftReadyQueue} />
+      </div>
+    </section>
+  );
+}
+
+function PipelineStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-zinc-950 px-3 py-2">
+      <p className="text-xl font-black text-zinc-50">{value}</p>
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-500">{label}</p>
+    </div>
+  );
+}
+
+function PipelineQueue({ rows, title }: { rows: ProductResearchPipelineRow[]; title: string }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-zinc-950 p-4">
+      <h3 className="text-sm font-black uppercase tracking-[0.16em] text-zinc-300">{title}</h3>
+      <div className="mt-3 grid gap-2">
+        {rows.slice(0, 6).map((row) => (
+          <div className="rounded border border-white/10 bg-zinc-900 p-3" key={`${row.rowNumber}-${row.product}`}>
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-bold text-zinc-50">{row.product}</p>
+              <span className="rounded bg-emerald-300/15 px-2 py-1 text-xs font-black text-emerald-200">{Math.round(row.selectionScore)}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-zinc-400">
+              <span>Row {row.rowNumber}</span>
+              {row.category ? <span>{row.category}</span> : null}
+              {row.priority ? <span>{row.priority}</span> : null}
+              {row.status ? <span>{row.status}</span> : null}
+            </div>
+            <p className={row.canDraft ? "mt-2 text-xs leading-5 text-emerald-200" : "mt-2 text-xs leading-5 text-amber-200"}>
+              {row.canDraft ? row.sourceQuality : row.blockReason}
+            </p>
+          </div>
+        ))}
+        {!rows.length ? <p className="text-sm text-zinc-500">No rows in this queue.</p> : null}
+      </div>
+    </div>
   );
 }
 
