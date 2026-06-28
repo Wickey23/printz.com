@@ -82,6 +82,11 @@ export type AiMarketResearchState = ActionState & {
   productId?: string;
 };
 
+export type BulkOpportunityDraftState = ActionState & {
+  created?: number;
+  skipped?: number;
+};
+
 export type EtsyDraftState = ActionState & {
   listingUrl?: string;
   uploadedImages?: number;
@@ -946,6 +951,57 @@ export async function createProductFromTrendReport(formData: FormData) {
   redirect(`/admin/products/${productId}`);
 }
 
+export async function createOpportunityDraftsFromChatsSheet(
+  _: BulkOpportunityDraftState,
+  formData: FormData,
+): Promise<BulkOpportunityDraftState> {
+  if (!(await assertAdmin())) return failure("Unauthorized.");
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return failure("Supabase service role key is required.");
+
+  const spreadsheetId = optionalTextFromForm(formData, "spreadsheet_id") || process.env.PRINTZ_PRODUCT_SHEET_ID || "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
+  const requestedSheet = optionalTextFromForm(formData, "sheet_name");
+  const limit = clampNumber(textFromForm(formData, "limit"), 1, 100, 20);
+
+  try {
+    const sheets = new GoogleSheetsClient({ spreadsheetId, env: process.env });
+    const sheetName = requestedSheet || await findSheetName(sheets, ["chat", "opportunit", "trend"]);
+    if (!sheetName) return failure("Could not find a chats/opportunities sheet tab. Enter the tab name and try again.");
+
+    const rows = await sheets.getValues(`${quoteSheetName(sheetName)}!A1:AZ500`);
+    const opportunities = rowsToOpportunityReports(rows, sheetName).slice(0, limit);
+    if (!opportunities.length) {
+      return failure(`No high-opportunity product rows found in ${sheetName}. Add title/name plus opportunity score, priority, or status columns.`);
+    }
+
+    let created = 0;
+    let skipped = 0;
+    for (const report of opportunities) {
+      const before = await findProductIdByName(report.recommended_listing.title || report.title, supabase);
+      if (before) {
+        skipped++;
+        continue;
+      }
+      await createOpportunityProductFromReport(report, supabase);
+      created++;
+    }
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/ai");
+    revalidatePath("/admin/trends");
+
+    return {
+      ok: true,
+      message: `Created ${created} product draft${created === 1 ? "" : "s"} from ${sheetName}. Skipped ${skipped} existing product${skipped === 1 ? "" : "s"}.`,
+      created,
+      skipped,
+    };
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Could not create drafts from the chats sheet.");
+  }
+}
+
 export async function saveEtsyRuntimeSettings(state: ActionState, formData: FormData): Promise<ActionState> {
   void state;
 
@@ -1370,6 +1426,8 @@ async function createOpportunityProductFromReport(
 ) {
   const listing = report.recommended_listing || {};
   const title = cleanOpportunityText(listing.title) || cleanOpportunityText(report.title) || "PRINTZ product opportunity";
+  const existingProductId = await findProductIdByName(title, supabase);
+  if (existingProductId) return existingProductId;
   const category = normalizeProductCategory(listing.category || listing.product_type || "");
   const slug = await uniqueProductSlug(slugify(title), supabase);
   const price = parseOpportunityPrice(listing.price);
@@ -1437,6 +1495,91 @@ async function createOpportunityProductFromReport(
   const fallback = await supabase.from("products").insert(product).select("id").single();
   if (fallback.error) throw fallback.error;
   return fallback.data.id as string;
+}
+
+async function findProductIdByName(name: string, supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
+  const title = cleanOpportunityText(name);
+  if (!title) return "";
+  const { data } = await supabase.from("products").select("id").eq("name", title).maybeSingle();
+  return data?.id ? String(data.id) : "";
+}
+
+async function findSheetName(sheets: GoogleSheetsClient, needles: string[]) {
+  const metadata = await sheets.request(`https://sheets.googleapis.com/v4/spreadsheets/${sheets.id}?fields=sheets(properties(title))`);
+  const names = ((metadata?.sheets || []) as Array<{ properties?: { title?: string } }>)
+    .map((sheet) => sheet.properties?.title || "")
+    .filter(Boolean);
+
+  return names.find((name) => needles.some((needle) => name.toLowerCase().includes(needle))) || "";
+}
+
+function rowsToOpportunityReports(rows: unknown[][], sheetName: string): EtsyTrendReport[] {
+  const [headerRow, ...bodyRows] = rows;
+  const headers = (headerRow || []).map((value) => normalizeSheetHeader(String(value || "")));
+  if (!headers.length) return [];
+
+  return bodyRows
+    .map((row, index) => rowToOpportunityReport(headers, row, index + 2, sheetName))
+    .filter((report): report is EtsyTrendReport => Boolean(report))
+    .sort((a, b) => opportunityScore(b) - opportunityScore(a));
+}
+
+function rowToOpportunityReport(headers: string[], row: unknown[], rowNumber: number, sheetName: string): EtsyTrendReport | null {
+  const value = (...aliases: string[]) => {
+    for (const alias of aliases.map(normalizeSheetHeader)) {
+      const index = headers.indexOf(alias);
+      if (index >= 0) {
+        const text = cleanOpportunityText(String(row[index] || ""));
+        if (text) return text;
+      }
+    }
+    return "";
+  };
+  const title = value("listing title", "recommended listing", "product title", "product name", "name", "idea", "product idea", "opportunity", "chat title");
+  if (!title) return null;
+
+  const scoreText = value("opportunity score", "viability score", "keyword score", "score", "priority score", "value score");
+  const priority = value("priority", "opportunity", "status", "rank", "tier");
+  const score = numberFromText(scoreText);
+  const isHighOpportunity =
+    (score !== null && score >= 70) ||
+    /\b(high|highest|top|yes|ready|create|draft|winner|priority|a\b|s\b)\b/i.test(priority) ||
+    rowNumber <= 11;
+  if (!isHighOpportunity) return null;
+
+  const description = value("description", "listing description", "summary", "notes", "chat summary", "answer") ||
+    `${title} was flagged as a high-opportunity product in ${sheetName}.`;
+  const tags = splitList(value("tags", "keywords", "search terms", "etsy tags", "keyword")).slice(0, 13);
+  const reportDate = todayInNewYork();
+
+  return {
+    id: `sheet:${sheetName}:${rowNumber}`,
+    report_date: reportDate,
+    title: `${title} opportunity`,
+    summary: description,
+    top_trends: splitList(value("trend", "trends", "top trends", "market signals", "why it is high value")),
+    listing_ideas: splitList(value("listing ideas", "variants", "angle", "angles", "product variations")),
+    recommended_listing: {
+      title,
+      product_type: value("product type", "type") || "3D Printed",
+      price: value("price", "suggested price", "target price"),
+      category: value("category", "site category"),
+      tags,
+      description,
+      files_or_variants: value("files or variants", "variants", "options", "variation plan"),
+      photo_plan: value("photo plan", "images", "media plan") || "Add original photos after finding or printing the product.",
+      next_steps: value("next steps", "todo", "action", "action items") || "Find MakerWorld/source model, verify rights, add images, then run AI fill.",
+    },
+    source_notes: `Imported from ${sheetName} row ${rowNumber}. Score: ${scoreText || "not provided"}. Priority/status: ${priority || "not provided"}.`,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function opportunityScore(report: EtsyTrendReport) {
+  const notesScore = numberFromText(report.source_notes || "");
+  if (notesScore !== null) return notesScore;
+  const priceScore = parseOpportunityPrice(report.recommended_listing.price);
+  return priceScore || 0;
 }
 
 async function uniqueProductSlug(baseSlug: string, supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {

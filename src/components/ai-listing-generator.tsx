@@ -2,7 +2,17 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { createProduct, generateAiListing, generateAiMarketResearch, generateAiScoutListing, type AiListingState, type AiMarketResearchState, type AiScoutState } from "@/app/actions";
+import {
+  createOpportunityDraftsFromChatsSheet,
+  createProduct,
+  generateAiListing,
+  generateAiMarketResearch,
+  generateAiScoutListing,
+  type AiListingState,
+  type AiMarketResearchState,
+  type AiScoutState,
+  type BulkOpportunityDraftState,
+} from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField, SubmitButton, TextArea } from "@/components/form-controls";
 import { MediaUpload } from "@/components/media-upload";
@@ -24,11 +34,17 @@ const initialScoutState: AiScoutState = {
   message: "",
 };
 
+const initialBulkDraftState: BulkOpportunityDraftState = {
+  ok: false,
+  message: "",
+};
+
 export function AiListingGenerator() {
   const [state, formAction, pending] = useActionState(generateAiListing, initialAiState);
 
   return (
     <div className="grid gap-8">
+      <BulkOpportunityDrafts />
       <AdminScoutBot />
       <MarketResearchGenerator />
 
@@ -72,6 +88,33 @@ export function AiListingGenerator() {
         <AiListingDraftForm draft={state.draft} />
       </div>
     </div>
+  );
+}
+
+function BulkOpportunityDrafts() {
+  const [state, formAction, pending] = useActionState(createOpportunityDraftsFromChatsSheet, initialBulkDraftState);
+
+  return (
+    <section className="grid gap-5 rounded-lg border border-amber-300/20 bg-amber-300/[0.04] p-5 sm:p-7">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-200">Bulk product drafts</p>
+        <h2 className="mt-2 text-2xl font-black text-zinc-50">Create drafts from the chats list sheet</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
+          Reads the Google Sheet tab with chat/opportunity rows, picks high-score or high-priority products, and creates inactive product drafts. Add source links and images later, then use AI fill on each product.
+        </p>
+      </div>
+      <form action={formAction} className="grid gap-4 md:grid-cols-[1fr_1fr_140px_auto] md:items-end">
+        <Field label="Spreadsheet ID" name="spreadsheet_id" placeholder="Defaults to PRINTZ_PRODUCT_SHEET_ID" />
+        <Field label="Tab name" name="sheet_name" placeholder="Chats List, Chat List, Opportunities..." />
+        <Field defaultValue="20" label="Max drafts" name="limit" type="number" />
+        <SubmitButton pending={pending}>Create Drafts</SubmitButton>
+      </form>
+      {state.message ? (
+        <p className={state.ok ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-red-300"}>
+          {state.message}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
