@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { getBulkOpportunitySettings } from "@/app/actions";
 import { AiListingGenerator } from "@/components/ai-listing-generator";
 import { requireAdmin } from "@/lib/auth";
 
 export default async function AdminAiPage() {
   const auth = await requireAdmin();
   if (!auth.approved) return null;
+  const bulkOpportunitySettings = await getBulkOpportunitySettings();
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -25,7 +27,7 @@ export default async function AdminAiPage() {
           </Link>
         </div>
       </div>
-      <AiListingGenerator />
+      <AiListingGenerator bulkOpportunitySettings={bulkOpportunitySettings} />
     </section>
   );
 }

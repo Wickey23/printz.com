@@ -39,12 +39,16 @@ const initialBulkDraftState: BulkOpportunityDraftState = {
   message: "",
 };
 
-export function AiListingGenerator() {
+export function AiListingGenerator({
+  bulkOpportunitySettings = { spreadsheetInput: "", sheetName: "", limit: "20" },
+}: {
+  bulkOpportunitySettings?: { spreadsheetInput: string; sheetName: string; limit: string };
+}) {
   const [state, formAction, pending] = useActionState(generateAiListing, initialAiState);
 
   return (
     <div className="grid gap-8">
-      <BulkOpportunityDrafts />
+      <BulkOpportunityDrafts settings={bulkOpportunitySettings} />
       <AdminScoutBot />
       <MarketResearchGenerator />
 
@@ -91,7 +95,7 @@ export function AiListingGenerator() {
   );
 }
 
-function BulkOpportunityDrafts() {
+function BulkOpportunityDrafts({ settings }: { settings: { spreadsheetInput: string; sheetName: string; limit: string } }) {
   const [state, formAction, pending] = useActionState(createOpportunityDraftsFromChatsSheet, initialBulkDraftState);
 
   return (
@@ -104,9 +108,9 @@ function BulkOpportunityDrafts() {
         </p>
       </div>
       <form action={formAction} className="grid gap-4 md:grid-cols-[1fr_1fr_140px_auto] md:items-end">
-        <Field label="Spreadsheet ID" name="spreadsheet_id" placeholder="Defaults to PRINTZ_PRODUCT_SHEET_ID" />
-        <Field label="Tab name" name="sheet_name" placeholder="Chats List, Chat List, Opportunities..." />
-        <Field defaultValue="20" label="Max drafts" name="limit" type="number" />
+        <Field defaultValue={settings.spreadsheetInput} label="Spreadsheet URL or ID" name="spreadsheet_id" placeholder="Paste Google Sheets URL, or leave blank for default" />
+        <Field defaultValue={settings.sheetName} label="Tab name" name="sheet_name" placeholder="Chats List, Chat List, Opportunities..." />
+        <Field defaultValue={settings.limit || "20"} label="Max drafts" name="limit" type="number" />
         <SubmitButton pending={pending}>Create Drafts</SubmitButton>
       </form>
       {state.message ? (

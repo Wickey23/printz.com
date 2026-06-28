@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { contactSchema, productSchema, suggestionSchema } from "@/lib/schemas";
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
@@ -86,6 +87,8 @@ export type BulkOpportunityDraftState = ActionState & {
   created?: number;
   skipped?: number;
 };
+
+const bulkOpportunitySettingsCookie = "printz_bulk_opportunity_settings";
 
 export type EtsyDraftState = ActionState & {
   listingUrl?: string;
@@ -960,9 +963,15 @@ export async function createOpportunityDraftsFromChatsSheet(
   const supabase = createSupabaseAdminClient();
   if (!supabase) return failure("Supabase service role key is required.");
 
-  const spreadsheetId = optionalTextFromForm(formData, "spreadsheet_id") || process.env.PRINTZ_PRODUCT_SHEET_ID || "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
+  const spreadsheetInput = optionalTextFromForm(formData, "spreadsheet_id") || process.env.PRINTZ_PRODUCT_SHEET_ID || "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
+  const spreadsheetId = spreadsheetIdFromInput(spreadsheetInput);
   const requestedSheet = optionalTextFromForm(formData, "sheet_name");
   const limit = clampNumber(textFromForm(formData, "limit"), 1, 100, 20);
+  await saveBulkOpportunitySettings({
+    spreadsheetInput,
+    sheetName: requestedSheet || "",
+    limit,
+  });
 
   try {
     const sheets = new GoogleSheetsClient({ spreadsheetId, env: process.env });
@@ -1000,6 +1009,43 @@ export async function createOpportunityDraftsFromChatsSheet(
   } catch (error) {
     return failure(error instanceof Error ? error.message : "Could not create drafts from the chats sheet.");
   }
+}
+
+export async function getBulkOpportunitySettings() {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(bulkOpportunitySettingsCookie)?.value;
+  if (!raw) return { spreadsheetInput: "", sheetName: "", limit: "20" };
+
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as {
+      spreadsheetInput?: string;
+      sheetName?: string;
+      limit?: number | string;
+    };
+
+    return {
+      spreadsheetInput: String(parsed.spreadsheetInput || ""),
+      sheetName: String(parsed.sheetName || ""),
+      limit: String(parsed.limit || "20"),
+    };
+  } catch {
+    return { spreadsheetInput: "", sheetName: "", limit: "20" };
+  }
+}
+
+async function saveBulkOpportunitySettings(settings: { spreadsheetInput: string; sheetName: string; limit: number }) {
+  const cookieStore = await cookies();
+  cookieStore.set(
+    bulkOpportunitySettingsCookie,
+    Buffer.from(JSON.stringify(settings), "utf8").toString("base64url"),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 365 * 24 * 60 * 60,
+    },
+  );
 }
 
 export async function saveEtsyRuntimeSettings(state: ActionState, formData: FormData): Promise<ActionState> {
@@ -1573,6 +1619,12 @@ function rowToOpportunityReport(headers: string[], row: unknown[], rowNumber: nu
     source_notes: `Imported from ${sheetName} row ${rowNumber}. Score: ${scoreText || "not provided"}. Priority/status: ${priority || "not provided"}.`,
     created_at: new Date().toISOString(),
   };
+}
+
+function spreadsheetIdFromInput(value: string) {
+  const trimmed = value.trim();
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match?.[1] || trimmed;
 }
 
 function opportunityScore(report: EtsyTrendReport) {
