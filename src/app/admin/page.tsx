@@ -3,8 +3,9 @@ import { archiveProduct, deleteSuggestion, signOutAdmin, updateSuggestionStatus 
 import { ProductSyncDryRunButton } from "@/components/product-sync-dry-run-button";
 import { DeactivateAllProductsPanel } from "@/components/deactivate-all-products-panel";
 import { requireAdmin } from "@/lib/auth";
-import { getAllProductsForAdmin, getProductSyncHealth, getSuggestionsForAdmin } from "@/lib/data";
+import { getAllProductsForAdmin, getProductMediaForProducts, getProductSyncHealth, getSuggestionsForAdmin } from "@/lib/data";
 import { etsyReadinessLabel, getEtsyReadiness } from "@/lib/etsy-readiness";
+import { getLaunchAudit, type LaunchAuditSeverity, type LaunchAuditSummary } from "@/lib/launch-audit";
 import { formatPrice } from "@/lib/utils";
 
 export default async function AdminPage() {
@@ -12,6 +13,8 @@ export default async function AdminPage() {
   if (!auth.approved) return <AccessDenied email={auth.user.email || ""} />;
 
   const [products, suggestions, syncHealth] = await Promise.all([getAllProductsForAdmin(), getSuggestionsForAdmin(), getProductSyncHealth()]);
+  const mediaByProductId = await getProductMediaForProducts(products.map((product) => product.id));
+  const launchAudit = getLaunchAudit({ mediaByProductId, products, syncHealth });
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -54,6 +57,8 @@ export default async function AdminPage() {
       </div>
 
       <div className="grid gap-8">
+        <LaunchAuditPanel audit={launchAudit} />
+
         <section className="rounded-lg border border-white/10 bg-zinc-900/70 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -147,8 +152,6 @@ export default async function AdminPage() {
           </div>
         </section>
 
-        <DeactivateAllProductsPanel />
-
         <section className="rounded-lg border border-white/10 bg-zinc-900/70">
           <div className="border-b border-white/10 p-5">
             <h2 className="text-xl font-bold">Suggestions</h2>
@@ -190,6 +193,83 @@ export default async function AdminPage() {
       </div>
     </section>
   );
+}
+
+function LaunchAuditPanel({ audit }: { audit: LaunchAuditSummary }) {
+  return (
+    <section className="rounded-lg border border-amber-300/20 bg-amber-300/[0.07] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-amber-200">Launch audit</p>
+          <h2 className="mt-2 text-2xl font-black text-zinc-50">Business readiness snapshot</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">
+            Use this as the operating checklist before driving traffic from Etsy, social posts, or ads.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center text-sm">
+          <AuditStat label="Blockers" value={audit.blockers} tone="blocker" />
+          <AuditStat label="Warnings" value={audit.warnings} tone="warning" />
+          <AuditStat label="Ready" value={audit.ready} tone="ready" />
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Metric label="Active" value={audit.activeProducts} />
+        <Metric label="Etsy links" value={audit.purchasableProducts} />
+        <Metric label="Requests" value={audit.requestOnlyProducts} />
+        <Metric label="Draft ready" value={audit.draftReadyProducts} />
+        <Metric label="Publish ready" value={audit.publishReadyProducts} />
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        {audit.items.map((item) => (
+          <a
+            className={`rounded-md border p-4 transition hover:border-amber-300/50 ${auditItemClass(item.severity)}`}
+            href={item.href || "/admin"}
+            key={item.key}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-black text-zinc-50">{item.label}</h3>
+              <span className={`rounded px-2 py-1 text-xs font-black uppercase ${auditBadgeClass(item.severity)}`}>
+                {item.severity}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">{item.detail}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-zinc-950 p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+      <p className="mt-1 text-2xl font-black text-zinc-50">{value}</p>
+    </div>
+  );
+}
+
+function AuditStat({ label, tone, value }: { label: string; tone: LaunchAuditSeverity; value: number }) {
+  return (
+    <div className={`min-w-20 rounded-md border px-3 py-2 ${auditItemClass(tone)}`}>
+      <p className="text-xl font-black text-zinc-50">{value}</p>
+      <p className="text-xs font-bold text-zinc-400">{label}</p>
+    </div>
+  );
+}
+
+function auditItemClass(severity: LaunchAuditSeverity) {
+  if (severity === "blocker") return "border-red-400/20 bg-red-500/10";
+  if (severity === "warning") return "border-amber-300/20 bg-amber-300/10";
+  return "border-emerald-400/20 bg-emerald-400/10";
+}
+
+function auditBadgeClass(severity: LaunchAuditSeverity) {
+  if (severity === "blocker") return "bg-red-400/15 text-red-100";
+  if (severity === "warning") return "bg-amber-300/15 text-amber-100";
+  return "bg-emerald-400/15 text-emerald-100";
 }
 
 function AccessDenied({ email }: { email: string }) {

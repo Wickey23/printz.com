@@ -9,6 +9,7 @@ type EtsyMoney = {
 };
 
 type EtsyImage = {
+  listing_image_id?: number;
   url_fullxfull?: string;
   url_570xN?: string;
   url_300x300?: string;
@@ -38,50 +39,91 @@ export type EtsySyncResult = {
   ok: boolean;
   message: string;
   imported: number;
+  deactivated: number;
+  mediaUpdated: number;
+  mode: "active-only" | "shop-mirror";
   updatedAt: string;
 };
 
-export async function syncEtsyListings(): Promise<EtsySyncResult> {
+export async function syncEtsyListings(options: { accessToken?: string | null } = {}): Promise<EtsySyncResult> {
   const apiKey = process.env.ETSY_API_KEY;
+  const accessToken = options.accessToken || process.env.ETSY_ACCESS_TOKEN || "";
   const settings = await getEffectiveEtsyRuntimeSettings();
   const configuredShopId = settings.shopId;
   const shopName = process.env.ETSY_SHOP_NAME || "printzbykhan";
   const supabase = createSupabaseAdminClient();
   const updatedAt = new Date().toISOString();
+  const emptyResult = {
+    imported: 0,
+    deactivated: 0,
+    mediaUpdated: 0,
+    mode: accessToken ? "shop-mirror" as const : "active-only" as const,
+    updatedAt,
+  };
 
   if (!supabase) {
-    return { ok: false, message: "Supabase service role key is not configured.", imported: 0, updatedAt };
+    return { ok: false, message: "Supabase service role key is not configured.", ...emptyResult };
   }
 
   if (!apiKey) {
     return {
       ok: false,
       message: "ETSY_API_KEY is required before Etsy sync can run. It must be keystring:shared_secret from the Etsy developer app.",
-      imported: 0,
-      updatedAt,
+      ...emptyResult,
     };
   }
 
   const shopId = configuredShopId || (await resolveShopId({ apiKey, shopName }));
-  const listings = await fetchActiveEtsyListings({ apiKey, shopId });
-  if (!listings.length) {
-    return { ok: true, message: "No active Etsy listings returned.", imported: 0, updatedAt };
+  const syncMode = accessToken ? "shop-mirror" : "active-only";
+  const listings = accessToken
+    ? await fetchShopListingsByState({ accessToken, apiKey, shopId })
+    : await fetchActiveEtsyListings({ apiKey, shopId });
+  const activeListings = listings.filter((listing) => listing.state ? listing.state === "active" : true);
+
+  if (!activeListings.length) {
+    const deactivated = accessToken ? await deactivateInactiveEtsyProducts({ activeListings, allListings: listings, supabase, updatedAt }) : 0;
+    return {
+      ok: true,
+      message: accessToken
+        ? `No active Etsy listings returned. Deactivated ${deactivated} website product${deactivated === 1 ? "" : "s"} from Etsy state.`
+        : "No active Etsy listings returned.",
+      imported: 0,
+      deactivated,
+      mediaUpdated: 0,
+      mode: syncMode,
+      updatedAt,
+    };
   }
 
-  const rows = listings.map((listing) => mapListingToProduct(listing, updatedAt));
-  const { error } = await supabase.from("products").upsert(rows, {
+  const rows = activeListings.map((listing) => mapListingToProduct(listing, updatedAt));
+  const { data: upsertedProducts, error } = await supabase.from("products").upsert(rows, {
     onConflict: "etsy_listing_id",
     ignoreDuplicates: false,
-  });
+  }).select("id, etsy_listing_id");
 
   if (error) {
-    return { ok: false, message: error.message, imported: 0, updatedAt };
+    return { ok: false, message: error.message, imported: 0, deactivated: 0, mediaUpdated: 0, mode: syncMode, updatedAt };
   }
+
+  const mediaUpdated = await replaceProductMediaFromEtsy({
+    listings: activeListings,
+    products: upsertedProducts || [],
+    supabase,
+  });
+  const deactivated = accessToken ? await deactivateInactiveEtsyProducts({ activeListings, allListings: listings, supabase, updatedAt }) : 0;
 
   return {
     ok: true,
-    message: `Synced ${rows.length} active Etsy listing${rows.length === 1 ? "" : "s"}.`,
+    message: [
+      `Synced ${rows.length} active Etsy listing${rows.length === 1 ? "" : "s"}.`,
+      mediaUpdated ? `Refreshed ${mediaUpdated} Etsy image${mediaUpdated === 1 ? "" : "s"} on the website.` : "",
+      deactivated ? `Deactivated ${deactivated} non-active Etsy product${deactivated === 1 ? "" : "s"} on the website.` : "",
+      syncMode === "active-only" ? "Connect OAuth or set ETSY_ACCESS_TOKEN for inactive/draft/sold-out mirroring." : "Full shop mirror mode used OAuth state checks.",
+    ].filter(Boolean).join(" "),
     imported: rows.length,
+    deactivated,
+    mediaUpdated,
+    mode: syncMode,
     updatedAt,
   };
 }
@@ -145,6 +187,137 @@ async function fetchActiveEtsyListings({ apiKey, shopId }: { apiKey: string; sho
   }
 
   return listings;
+}
+
+async function fetchShopListingsByState({ accessToken, apiKey, shopId }: { accessToken: string; apiKey: string; shopId: string }) {
+  const states = ["active", "inactive", "sold_out", "draft", "expired"];
+  const seen = new Set<number>();
+  const listings: EtsyListing[] = [];
+
+  for (const state of states) {
+    const page = await fetchShopListings({ accessToken, apiKey, shopId, state });
+    for (const listing of page) {
+      if (seen.has(listing.listing_id)) continue;
+      seen.add(listing.listing_id);
+      listings.push({ ...listing, state: listing.state || state });
+    }
+  }
+
+  return listings;
+}
+
+async function fetchShopListings({
+  accessToken,
+  apiKey,
+  shopId,
+  state,
+}: {
+  accessToken: string;
+  apiKey: string;
+  shopId: string;
+  state: string;
+}) {
+  const listings: EtsyListing[] = [];
+  let offset = 0;
+  const limit = 100;
+
+  while (offset < 1000) {
+    const url = new URL(`https://api.etsy.com/v3/application/shops/${shopId}/listings`);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("state", state);
+    url.searchParams.set("includes", "Images");
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "x-api-key": apiKey,
+      },
+      next: { revalidate: 0 },
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(etsyApiErrorMessage(`Etsy ${state} listing sync failed`, response.status, body));
+    }
+
+    const payload = (await response.json()) as { count?: number; results?: EtsyListing[] };
+    const page = payload.results || [];
+    listings.push(...page);
+
+    if (page.length < limit || listings.length >= (payload.count || 0)) break;
+    offset += limit;
+  }
+
+  return listings;
+}
+
+async function replaceProductMediaFromEtsy({
+  listings,
+  products,
+  supabase,
+}: {
+  listings: EtsyListing[];
+  products: Array<{ id: string; etsy_listing_id: number | null }>;
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+}) {
+  const productByListingId = new Map(products.map((product) => [Number(product.etsy_listing_id), product.id]));
+  const productIds = products.map((product) => product.id).filter(Boolean);
+  if (!productIds.length) return 0;
+
+  await supabase.from("product_media").delete().in("product_id", productIds);
+
+  const mediaRows = listings.flatMap((listing) => {
+    const productId = productByListingId.get(listing.listing_id);
+    if (!productId) return [];
+
+    return listingImages(listing).map((url, index) => ({
+      product_id: productId,
+      media_type: "image",
+      url,
+      sort_order: index,
+    }));
+  });
+
+  if (!mediaRows.length) return 0;
+  const { error } = await supabase.from("product_media").insert(mediaRows);
+  if (error) throw error;
+  return mediaRows.length;
+}
+
+async function deactivateInactiveEtsyProducts({
+  activeListings,
+  allListings,
+  supabase,
+  updatedAt,
+}: {
+  activeListings: EtsyListing[];
+  allListings: EtsyListing[];
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+  updatedAt: string;
+}) {
+  const activeIds = new Set(activeListings.map((listing) => listing.listing_id));
+  const inactiveListings = allListings.filter((listing) => !activeIds.has(listing.listing_id));
+  if (!inactiveListings.length) return 0;
+
+  let changed = 0;
+  for (const listing of inactiveListings) {
+    const { error, count } = await supabase
+      .from("products")
+      .update({
+        active: false,
+        featured: false,
+        etsy_state: listing.state || "inactive",
+        synced_from_etsy_at: updatedAt,
+        updated_at: updatedAt,
+      }, { count: "exact" })
+      .eq("etsy_listing_id", listing.listing_id);
+
+    if (error) throw error;
+    changed += count || 0;
+  }
+
+  return changed;
 }
 
 function etsyApiErrorMessage(context: string, status: number, body: string) {
@@ -234,6 +407,11 @@ function parsePrice(value: EtsyListing["price"]) {
 function primaryImage(listing: EtsyListing) {
   const image = listing.Images?.[0] || listing.images?.[0];
   return image?.url_fullxfull || image?.url_570xN || image?.url_300x300 || image?.url_170x135 || null;
+}
+
+function listingImages(listing: EtsyListing) {
+  const images = listing.Images || listing.images || [];
+  return Array.from(new Set(images.map((image) => image.url_fullxfull || image.url_570xN || image.url_300x300 || image.url_170x135).filter(Boolean) as string[]));
 }
 
 function digitalSignals(listing: EtsyListing) {

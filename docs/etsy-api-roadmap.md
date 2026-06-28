@@ -6,7 +6,10 @@ This is the practical integration path for PRINTZ. Keep Etsy as the checkout and
 
 - OAuth connection with PKCE.
 - Etsy ID auto-detect for shop, taxonomy, shipping profile, and readiness state.
-- Active listing sync from Etsy into `products`.
+- Etsy-to-site listing sync from Etsy into `products`.
+  - Public/API-key mode refreshes active listings.
+  - OAuth mode refreshes listing copy, price, images, active state, and deactivates website products when the Etsy listing is no longer active.
+  - Vercel cron runs `/api/cron/sync-etsy` hourly when the deployment plan supports that schedule. The admin `/admin/etsy` sync button can be used immediately after editing Etsy.
 - Basic Etsy draft creation from a site product.
 - Custom print requests can store quoted price and custom Etsy checkout URL.
 

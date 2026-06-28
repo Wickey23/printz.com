@@ -909,7 +909,8 @@ export async function syncEtsyProducts(state: ActionState, formData: FormData): 
   if (!(await assertAdmin())) return failure("Unauthorized.");
 
   try {
-    const result = await syncEtsyListings();
+    const etsyToken = await getValidEtsyOAuthToken().catch(() => null);
+    const result = await syncEtsyListings({ accessToken: etsyToken?.access_token });
     revalidatePath("/");
     revalidatePath("/products");
     revalidatePath("/admin");

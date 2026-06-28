@@ -24,7 +24,7 @@ export function EtsySyncPanel() {
               </p>
             ) : (
               <p className="text-xs leading-5 text-zinc-500">
-                Pulls active Etsy listings into the website. If the Etsy app is pending approval, Etsy will reject the key until approval is complete.
+                Pulls Etsy listing edits, prices, descriptions, images, and active/inactive state into the website. Full state mirroring needs a connected Etsy OAuth token or ETSY_ACCESS_TOKEN.
               </p>
             )}
           </>
