@@ -1,0 +1,24 @@
+name: Hourly Etsy Draft Automation
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+jobs:
+  create-etsy-drafts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call PRINTZ Etsy draft automation
+        env:
+          PRINTZ_SITE_URL: ${{ secrets.PRINTZ_SITE_URL }}
+          PRINTZ_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRINTZ_SITE_URL:-}" ] || [ -z "${PRINTZ_CRON_SECRET:-}" ]; then
+            echo "Missing PRINTZ_SITE_URL or CRON_SECRET repository secret."
+            exit 1
+          fi
+          curl --fail --show-error --silent \
+            -H "Authorization: Bearer ${PRINTZ_CRON_SECRET}" \
+            "${PRINTZ_SITE_URL%/}/api/cron/create-etsy-drafts?limit=10"
