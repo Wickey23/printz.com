@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { seedChatsListProductDrafts } from "@/lib/chats-list-drafts";
 import { createOrSyncEtsyListing, etsyListingRequirements } from "@/lib/etsy-listings";
 import { getEffectiveEtsyRuntimeSettings } from "@/lib/etsy-auth";
 import { getEtsyReadiness } from "@/lib/etsy-readiness";
@@ -13,6 +14,13 @@ export type EtsyDraftAutomationResult = {
   skipped: number;
   failed: number;
   failures: string[];
+  chatsListSeed?: {
+    checked: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  };
 };
 
 export async function createMissingEtsyDrafts({
@@ -29,6 +37,14 @@ export async function createMissingEtsyDrafts({
 
   const accessToken = process.env.ETSY_ACCESS_TOKEN || "";
   const settings = await getEffectiveEtsyRuntimeSettings();
+  const chatsListSeed = await seedChatsListProductDrafts({ limit, supabase }).catch((error) => ({
+    checked: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 1,
+    failures: [error instanceof Error ? error.message : "Chats List product seeding failed."],
+  }));
 
   const { data, error } = await supabase
     .from("products")
@@ -100,12 +116,19 @@ export async function createMissingEtsyDrafts({
 
   return {
     ok: failed === 0,
-    message: `${dryRun ? "Dry run found" : "Created/synced"} ${created} Etsy draft${created === 1 ? "" : "s"}. Skipped ${skipped}. Failed ${failed}.`,
+    message: `${dryRun ? "Dry run found" : "Created/synced"} ${created} Etsy draft${created === 1 ? "" : "s"}. Skipped ${skipped}. Failed ${failed}. Chats List seed created ${chatsListSeed.created}, updated ${chatsListSeed.updated}, failed ${chatsListSeed.failed}.`,
     checked: products.length,
     created,
     skipped,
     failed,
-    failures,
+    failures: [...(chatsListSeed.failures || []), ...failures],
+    chatsListSeed: {
+      checked: chatsListSeed.checked,
+      created: chatsListSeed.created,
+      updated: chatsListSeed.updated,
+      skipped: chatsListSeed.skipped,
+      failed: chatsListSeed.failed,
+    },
   };
 }
 
