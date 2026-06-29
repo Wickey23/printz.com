@@ -1199,6 +1199,7 @@ export async function createEtsyDraftListing(state: EtsyDraftState, formData: Fo
         etsy_listing_id: result.listingId,
         etsy_url: result.url,
         etsy_state: "draft",
+        active: true,
         updated_at: new Date().toISOString(),
       })
       .eq("id", product.id);
@@ -2342,6 +2343,7 @@ async function syncProductToAttachedEtsyListing(productId: string, publish: bool
       etsy_listing_id: result.listingId,
       etsy_url: result.url,
       etsy_state: result.state,
+      active: true,
       updated_at: new Date().toISOString(),
     }).eq("id", product.id);
 

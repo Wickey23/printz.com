@@ -95,6 +95,7 @@ export async function createMissingEtsyDrafts({
           etsy_listing_id: result.listingId,
           etsy_url: result.url,
           etsy_state: result.state || "draft",
+          active: true,
           updated_at: new Date().toISOString(),
         })
         .eq("id", product.id);
