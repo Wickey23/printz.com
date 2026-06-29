@@ -5,6 +5,8 @@ import type { Product } from "@/lib/types";
 
 const DEFAULT_PRODUCT_SHEET_ID = "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
 const DEFAULT_CHATS_SHEET = "chats list";
+const protectedTermPattern =
+  /\b(oral\s*-?b|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox)\b/i;
 
 type SupabaseAdmin = SupabaseClient;
 
@@ -226,6 +228,7 @@ function isClearlyBlocked(row: ChatsRow) {
 }
 
 function hasTrademarkRisk(value: string) {
+  if (/[^\x00-\x7F]/.test(value) || protectedTermPattern.test(value)) return true;
   return /\b(stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|pok[eé]mon|disney|marvel|star wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity)\b/i.test(value);
 }
 

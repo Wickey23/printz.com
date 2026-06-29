@@ -6,6 +6,9 @@ import { getEtsyReadiness } from "@/lib/etsy-readiness";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { Product, ProductMedia } from "@/lib/types";
 
+const protectedTermPattern =
+  /\b(oral\s*-?b|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox)\b/i;
+
 export type EtsyDraftAutomationResult = {
   ok: boolean;
   message: string;
@@ -65,11 +68,11 @@ export async function createMissingEtsyDrafts({
 
   for (const product of products) {
     const media = await productMedia(supabase, product.id);
-    const imageCount = media.filter((item) => item.media_type === "image").length + (product.main_image_url ? 1 : 0);
+    const imageCount = productImageCount(product, media);
     const readiness = getEtsyReadiness(product, { imageCount });
     const requirements = etsyListingRequirements(product, { hasOAuthToken: Boolean(accessToken), settings });
 
-    if (requirements.length || !readiness.readyToDraft || hasTrademarkRisk(product)) {
+    if (requirements.length || !readiness.readyToPublish || hasTrademarkRisk(product)) {
       skipped++;
       continue;
     }
@@ -105,7 +108,7 @@ export async function createMissingEtsyDrafts({
           active: audit.ok,
           workflow_status: audit.ok ? product.workflow_status || "Draft Ready" : "Needs Review",
           rights_status: audit.ok ? product.rights_status : "Needs Review",
-          media_status: audit.imageCount > 0 ? product.media_status || "Ready" : "Needs Review",
+          media_status: audit.imageCount >= 5 ? product.media_status || "Ready" : "Needs Review",
           license_notes: appendAuditNote(product.license_notes, audit.note),
           updated_at: new Date().toISOString(),
         })
@@ -153,6 +156,13 @@ async function productMedia(supabase: NonNullable<ReturnType<typeof createSupaba
   return (data || []) as ProductMedia[];
 }
 
+function productImageCount(product: Product, media: ProductMedia[]) {
+  return new Set([
+    product.main_image_url,
+    ...media.filter((item) => item.media_type === "image").map((item) => item.url),
+  ].filter(Boolean)).size;
+}
+
 async function auditEtsyDraft({
   accessToken,
   apiKey,
@@ -180,7 +190,7 @@ async function auditEtsyDraft({
   const expectedPrice = Number(product.price || 0);
   const actualPrice = etsyPrice(listing.price);
   const checks = [
-    imageCount > 0 ? `Images OK (${imageCount} on Etsy, ${uploadedImages} newly uploaded).` : "Needs review: Etsy returned 0 listing images.",
+    imageCount >= 5 ? `Images OK (${imageCount} on Etsy, ${uploadedImages} newly uploaded).` : `Needs review: Etsy returned ${imageCount} listing images; publish-ready drafts need at least 5.`,
     description.length >= 250 ? "Description length OK." : "Needs review: Etsy description looks too short.",
     expectedPrice > 0 && actualPrice !== null && Math.abs(actualPrice - expectedPrice) < 0.01
       ? `Price OK ($${actualPrice.toFixed(2)}).`
@@ -226,6 +236,7 @@ async function fetchEtsyJson<T>(url: string, accessToken: string, apiKey: string
 function hasTrademarkRisk(product: Product) {
   if (product.trademark_review_status === "Needs Review") return true;
   const text = [product.name, product.short_description, product.full_description, product.source_url, ...(product.tags || [])].join(" ");
+  if (/[^\x00-\x7F]/.test(text) || protectedTermPattern.test(text)) return true;
   return /\b(stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|pok[eé]mon|disney|marvel|star wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity)\b/i.test(text);
 }
 
