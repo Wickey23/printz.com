@@ -1,10 +1,14 @@
 import { cookies } from "next/headers";
 import { createHash, randomBytes } from "crypto";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 const tokenCookie = "printz_etsy_oauth";
 const verifierCookie = "printz_etsy_pkce";
 const stateCookie = "printz_etsy_state";
 const settingsCookie = "printz_etsy_settings";
+const settingsTable = "private_app_settings";
+const tokenSettingKey = "etsy_oauth_token";
+const runtimeSettingsKey = "etsy_runtime_settings";
 
 export type EtsyOAuthToken = {
   access_token: string;
@@ -71,17 +75,18 @@ export async function clearEtsyOAuthStartCookies() {
 export async function setEtsyOAuthToken(token: EtsyOAuthToken) {
   const cookieStore = await cookies();
   cookieStore.set(tokenCookie, Buffer.from(JSON.stringify(token), "utf8").toString("base64url"), cookieOptions(90 * 24 * 60 * 60));
+  await setPrivateSetting(tokenSettingKey, token);
 }
 
 export async function getEtsyOAuthToken() {
   const cookieStore = await cookies();
   const raw = cookieStore.get(tokenCookie)?.value;
-  if (!raw) return null;
+  if (!raw) return getPrivateSetting<EtsyOAuthToken>(tokenSettingKey);
 
   try {
     return JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as EtsyOAuthToken;
   } catch {
-    return null;
+    return getPrivateSetting<EtsyOAuthToken>(tokenSettingKey);
   }
 }
 
@@ -106,17 +111,20 @@ export async function setEtsyRuntimeSettings(settings: Partial<EtsyRuntimeSettin
   const cookieStore = await cookies();
   const clean = normalizeEtsyRuntimeSettings(settings);
   cookieStore.set(settingsCookie, Buffer.from(JSON.stringify(clean), "utf8").toString("base64url"), cookieOptions(365 * 24 * 60 * 60));
+  await setPrivateSetting(runtimeSettingsKey, clean);
 }
 
 export async function getSavedEtsyRuntimeSettings() {
   const cookieStore = await cookies();
   const raw = cookieStore.get(settingsCookie)?.value;
-  if (!raw) return emptyEtsyRuntimeSettings();
+  if (!raw) {
+    return normalizeEtsyRuntimeSettings((await getPrivateSetting<Partial<EtsyRuntimeSettings>>(runtimeSettingsKey)) || {});
+  }
 
   try {
     return normalizeEtsyRuntimeSettings(JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Partial<EtsyRuntimeSettings>);
   } catch {
-    return emptyEtsyRuntimeSettings();
+    return normalizeEtsyRuntimeSettings((await getPrivateSetting<Partial<EtsyRuntimeSettings>>(runtimeSettingsKey)) || {});
   }
 }
 
@@ -136,15 +144,6 @@ function normalizeEtsyRuntimeSettings(settings: Partial<EtsyRuntimeSettings>) {
     taxonomyId: cleanId(settings.taxonomyId),
     shippingProfileId: cleanId(settings.shippingProfileId),
     readinessStateId: cleanId(settings.readinessStateId),
-  };
-}
-
-function emptyEtsyRuntimeSettings(): EtsyRuntimeSettings {
-  return {
-    shopId: "",
-    taxonomyId: "",
-    shippingProfileId: "",
-    readinessStateId: "",
   };
 }
 
@@ -196,4 +195,27 @@ async function refreshEtsyOAuthToken(refreshToken: string) {
 
   await setEtsyOAuthToken(token);
   return token;
+}
+
+async function getPrivateSetting<T>(key: string): Promise<T | null> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.from(settingsTable).select("value").eq("key", key).maybeSingle();
+  if (error) return null;
+  return (data?.value as T | undefined) || null;
+}
+
+async function setPrivateSetting(key: string, value: unknown) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return;
+
+  await supabase.from(settingsTable).upsert(
+    {
+      key,
+      value,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" },
+  );
 }

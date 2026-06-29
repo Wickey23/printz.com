@@ -140,6 +140,13 @@ create table if not exists public.admin_users (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.private_app_settings (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create or replace function public.set_updated_at()
 returns trigger as $$
 begin
@@ -168,6 +175,11 @@ create trigger printable_models_set_updated_at
 before update on public.printable_models
 for each row execute function public.set_updated_at();
 
+drop trigger if exists private_app_settings_set_updated_at on public.private_app_settings;
+create trigger private_app_settings_set_updated_at
+before update on public.private_app_settings
+for each row execute function public.set_updated_at();
+
 alter table public.products enable row level security;
 alter table public.product_media enable row level security;
 alter table public.suggestions enable row level security;
@@ -177,11 +189,19 @@ alter table public.custom_print_requests enable row level security;
 alter table public.print_stock_options enable row level security;
 alter table public.printable_models enable row level security;
 alter table public.admin_users enable row level security;
+alter table public.private_app_settings enable row level security;
 
 drop policy if exists "Public can read active products" on public.products;
 create policy "Public can read active products"
 on public.products for select
 using (active = true);
+
+drop policy if exists "private app settings are service-role only" on public.private_app_settings;
+create policy "private app settings are service-role only"
+on public.private_app_settings
+for all
+using (false)
+with check (false);
 
 drop policy if exists "Public can read active product media" on public.product_media;
 create policy "Public can read active product media"

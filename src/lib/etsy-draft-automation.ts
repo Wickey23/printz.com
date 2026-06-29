@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { seedChatsListProductDrafts } from "@/lib/chats-list-drafts";
 import { createOrSyncEtsyListing, etsyListingRequirements } from "@/lib/etsy-listings";
-import { getEffectiveEtsyRuntimeSettings } from "@/lib/etsy-auth";
+import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken } from "@/lib/etsy-auth";
 import { getEtsyReadiness } from "@/lib/etsy-readiness";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { Product, ProductMedia } from "@/lib/types";
@@ -35,8 +35,8 @@ export async function createMissingEtsyDrafts({
     return emptyResult("Supabase service role key is required.", false);
   }
 
-  const accessToken = process.env.ETSY_ACCESS_TOKEN || "";
-  const settings = await getEffectiveEtsyRuntimeSettings();
+  const [etsyToken, settings] = await Promise.all([getValidEtsyOAuthToken(), getEffectiveEtsyRuntimeSettings()]);
+  const accessToken = etsyToken?.access_token || process.env.ETSY_ACCESS_TOKEN || "";
   const chatsListSeed = await seedChatsListProductDrafts({ limit, supabase }).catch((error) => ({
     checked: 0,
     created: 0,
