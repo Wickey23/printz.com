@@ -108,10 +108,10 @@ export async function createMissingEtsyDrafts({
   }
 
   if (!dryRun && created) {
-    revalidatePath("/");
-    revalidatePath("/products");
-    revalidatePath("/admin");
-    revalidatePath("/admin/etsy");
+    safeRevalidatePath("/");
+    safeRevalidatePath("/products");
+    safeRevalidatePath("/admin");
+    safeRevalidatePath("/admin/etsy");
   }
 
   return {
@@ -151,4 +151,12 @@ function emptyResult(message: string, ok: boolean): EtsyDraftAutomationResult {
     failed: ok ? 0 : 1,
     failures: ok ? [] : [message],
   };
+}
+
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path);
+  } catch {
+    // Scheduled/local automation can run outside a Next request store.
+  }
 }
