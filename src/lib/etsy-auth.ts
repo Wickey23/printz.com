@@ -73,14 +73,14 @@ export async function clearEtsyOAuthStartCookies() {
 }
 
 export async function setEtsyOAuthToken(token: EtsyOAuthToken) {
-  const cookieStore = await cookies();
-  cookieStore.set(tokenCookie, Buffer.from(JSON.stringify(token), "utf8").toString("base64url"), cookieOptions(90 * 24 * 60 * 60));
+  const cookieStore = await requestCookies();
+  cookieStore?.set(tokenCookie, Buffer.from(JSON.stringify(token), "utf8").toString("base64url"), cookieOptions(90 * 24 * 60 * 60));
   await setPrivateSetting(tokenSettingKey, token);
 }
 
 export async function getEtsyOAuthToken() {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get(tokenCookie)?.value;
+  const cookieStore = await requestCookies();
+  const raw = cookieStore?.get(tokenCookie)?.value;
   if (!raw) return getPrivateSetting<EtsyOAuthToken>(tokenSettingKey);
 
   try {
@@ -108,15 +108,15 @@ export async function getValidEtsyOAuthToken() {
 }
 
 export async function setEtsyRuntimeSettings(settings: Partial<EtsyRuntimeSettings>) {
-  const cookieStore = await cookies();
   const clean = normalizeEtsyRuntimeSettings(settings);
-  cookieStore.set(settingsCookie, Buffer.from(JSON.stringify(clean), "utf8").toString("base64url"), cookieOptions(365 * 24 * 60 * 60));
+  const cookieStore = await requestCookies();
+  cookieStore?.set(settingsCookie, Buffer.from(JSON.stringify(clean), "utf8").toString("base64url"), cookieOptions(365 * 24 * 60 * 60));
   await setPrivateSetting(runtimeSettingsKey, clean);
 }
 
 export async function getSavedEtsyRuntimeSettings() {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get(settingsCookie)?.value;
+  const cookieStore = await requestCookies();
+  const raw = cookieStore?.get(settingsCookie)?.value;
   if (!raw) {
     return normalizeEtsyRuntimeSettings((await getPrivateSetting<Partial<EtsyRuntimeSettings>>(runtimeSettingsKey)) || {});
   }
@@ -163,6 +163,14 @@ function cookieOptions(maxAge: number) {
     path: "/",
     maxAge,
   };
+}
+
+async function requestCookies() {
+  try {
+    return await cookies();
+  } catch {
+    return null;
+  }
 }
 
 async function refreshEtsyOAuthToken(refreshToken: string) {
