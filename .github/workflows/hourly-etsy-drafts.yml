@@ -1,8 +1,8 @@
-name: Daily Etsy Draft Automation
+name: Etsy Draft Automation
 
 on:
   schedule:
-    - cron: "7 9 * * *"
+    - cron: "7 */3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -21,4 +21,4 @@ jobs:
           fi
           curl --fail --show-error --silent \
             -H "Authorization: Bearer ${PRINTZ_CRON_SECRET}" \
-            "${PRINTZ_SITE_URL%/}/api/cron/create-etsy-drafts?limit=20"
+            "${PRINTZ_SITE_URL%/}/api/cron/create-etsy-drafts?limit=5"
