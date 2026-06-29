@@ -187,10 +187,10 @@ async function auditEtsyDraft({
       : `Needs review: price mismatch or unreadable Etsy price (site $${expectedPrice.toFixed(2)}, Etsy ${actualPrice === null ? "unknown" : `$${actualPrice.toFixed(2)}`}).`,
     product.source_url && description.includes(product.source_url) ? "Source URL included." : "Needs review: source URL missing from Etsy description.",
     product.license_type && description.includes(product.license_type) ? `License included (${product.license_type}).` : "Needs review: license text missing from Etsy description.",
-    product.attribution_text && product.attribution_required
-      ? description.includes(product.attribution_text)
+    product.attribution_required
+      ? hasCompleteAttribution(description, product)
         ? "Required attribution included."
-        : "Needs review: required attribution missing from Etsy description."
+        : "Needs review: required attribution details missing from Etsy description."
       : "Attribution not required or not provided.",
     sourceTitleLooksRelated(product) ? "Source title looks related to product title." : "Needs review: source title may not match product title.",
   ];
@@ -220,6 +220,18 @@ async function fetchEtsyJson<T>(url: string, accessToken: string, apiKey: string
     await delay(750);
   }
   throw new Error("Etsy audit read failed.");
+}
+
+function hasCompleteAttribution(description: string, product: Product) {
+  return Boolean(
+    product.creator_name &&
+      product.source_url &&
+      product.license_type &&
+      description.includes(`Creator: ${product.creator_name}`) &&
+      description.includes(product.source_url) &&
+      description.includes(product.license_type) &&
+      description.includes("Changes / use:"),
+  );
 }
 
 function etsyPrice(value: unknown) {

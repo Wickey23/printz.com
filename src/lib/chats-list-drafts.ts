@@ -434,7 +434,7 @@ function productPayload(row: ChatsRow, source: VerifiedMakerWorld, slug: string,
     modification_allowed: source.modificationAllowed,
     attribution_required: source.attributionRequired,
     share_alike_required: source.shareAlikeRequired,
-    attribution_text: source.attributionRequired && source.creator ? `${source.title || row.product} by ${source.creator} on MakerWorld, licensed ${licenseLabel(source.license)}.` : null,
+    attribution_text: source.attributionRequired && source.creator ? attributionText(row, source) : null,
     rights_reviewed_at: new Date().toISOString(),
     estimated_grams: source.estimatedGrams,
     estimated_print_hours: source.estimatedPrintHours,
@@ -454,7 +454,7 @@ function rightsPayload(row: ChatsRow, source: VerifiedMakerWorld) {
     modification_allowed: source.modificationAllowed,
     attribution_required: source.attributionRequired,
     share_alike_required: source.shareAlikeRequired,
-    attribution_text: source.attributionRequired && source.creator ? `${source.title || row.product} by ${source.creator} on MakerWorld, licensed ${licenseLabel(source.license)}.` : null,
+    attribution_text: source.attributionRequired && source.creator ? attributionText(row, source) : null,
     rights_reviewed_at: new Date().toISOString(),
   };
 }
@@ -504,7 +504,7 @@ function licenseNotes(row: ChatsRow, source: VerifiedMakerWorld) {
 
 function sourceLicenseSummary(row: ChatsRow, source: VerifiedMakerWorld) {
   const attribution = source.attributionRequired && source.creator
-    ? `Attribution: ${source.title || row.product} by ${source.creator} on MakerWorld, licensed ${licenseLabel(source.license)}.`
+    ? `Attribution: ${attributionText(row, source)}`
     : `Source model by ${source.creator || "a MakerWorld creator"} on MakerWorld. License: ${licenseLabel(source.license)}.`;
   const terms = [
     source.attributionRequired ? "Attribution is required and included in the Etsy listing." : "Attribution is optional under this license.",
@@ -512,6 +512,29 @@ function sourceLicenseSummary(row: ChatsRow, source: VerifiedMakerWorld) {
     source.shareAlikeRequired ? "Share-alike terms apply to adaptations." : "",
   ].filter(Boolean).join(" ");
   return `${attribution} ${terms}`;
+}
+
+function attributionText(row: ChatsRow, source: VerifiedMakerWorld) {
+  return [
+    `"${source.title || row.product}" by ${source.creator}`,
+    `Source: ${source.sourceUrl}`,
+    `License: ${licenseLabel(source.license)}${source.licenseUrl ? ` - ${source.licenseUrl}` : ""}`,
+    `Changes / use: ${sourceChangeStatement(source)}`,
+  ].join(". ");
+}
+
+function sourceChangeStatement(source: VerifiedMakerWorld) {
+  const license = licenseLabel(source.license).toLowerCase();
+  if (license.includes("cc0")) {
+    return "physical 3D printed item made by PRINTZ By Khan from the source model; attribution is not required under CC0";
+  }
+  if (!source.modificationAllowed || license.includes("by-nd")) {
+    return "physical 3D printed item made by PRINTZ By Khan from the unmodified source model; color, material, scale, and print settings may vary; no modified model files are redistributed";
+  }
+  if (source.shareAlikeRequired || license.includes("by-sa")) {
+    return "physical 3D printed item made by PRINTZ By Khan; color, material, scale, and print-setting adjustments may be used; adaptations remain subject to share-alike terms where applicable; no digital model files are redistributed";
+  }
+  return "physical 3D printed item made by PRINTZ By Khan; color, material, scale, and print-setting adjustments may be used; no digital model files are redistributed";
 }
 
 function rightsStatus(source: VerifiedMakerWorld) {

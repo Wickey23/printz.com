@@ -231,21 +231,23 @@ function sourceAttributionSection(product: Product) {
   const sourcePlatform = product.source_platform || (product.source_url?.includes("makerworld.com") ? "MakerWorld" : "");
   const creator = product.creator_name?.trim();
   const license = product.license_type?.trim();
-  const attribution = product.attribution_text?.trim();
+  const modelTitle = sourceModelTitle(product);
 
-  if (attribution) {
-    lines.push(`Attribution: ${attribution}`);
-  } else if (creator || sourcePlatform || license) {
-    lines.push(`Source model: ${[creator ? `by ${creator}` : "", sourcePlatform ? `on ${sourcePlatform}` : ""].filter(Boolean).join(" ") || "source model verified"}.`);
+  if (license || product.source_url || creator || sourcePlatform) {
+    lines.push(`Model: ${modelTitle || product.name}`);
+    if (creator) lines.push(`Creator: ${creator}`);
+    if (sourcePlatform) lines.push(`Platform: ${sourcePlatform}`);
+    if (product.source_url) lines.push(`Source: ${product.source_url}`);
+    if (license) lines.push(`License: ${license}${product.license_url ? ` - ${product.license_url}` : ""}`);
+    lines.push(`Changes / use: ${attributionChangeStatement(product)}`);
+  } else if (product.attribution_text?.trim()) {
+    lines.push(`Attribution: ${product.attribution_text.trim()}`);
   }
 
-  if (product.source_url) lines.push(`Source: ${product.source_url}`);
-  if (license) lines.push(`License: ${license}${product.license_url ? ` (${product.license_url})` : ""}.`);
-
   if (product.attribution_required === true) {
-    lines.push("Attribution is required by the source license and is provided above.");
+    lines.push("Attribution notice: This listing provides creator, source, license, and use/change details for the source model.");
   } else if (product.attribution_required === false && license) {
-    lines.push("Attribution is optional under the source license.");
+    lines.push("Attribution notice: Attribution is optional under this license, but source details are included for transparency.");
   }
 
   if (product.share_alike_required) {
@@ -257,6 +259,26 @@ function sourceAttributionSection(product: Product) {
   }
 
   return lines.join("\n");
+}
+
+function sourceModelTitle(product: Product) {
+  const attribution = product.attribution_text?.trim();
+  const titleFromAttribution = attribution?.split(/\s+by\s+/i)[0]?.replace(/^["“”]+|["“”]+$/g, "").trim();
+  return titleFromAttribution || "";
+}
+
+function attributionChangeStatement(product: Product) {
+  const license = product.license_type?.toLowerCase() || "";
+  if (license.includes("cc0")) {
+    return "Physical 3D printed item made by PRINTZ By Khan from the source model. Attribution is not required under CC0.";
+  }
+  if (product.modification_allowed === false || license.includes("by-nd")) {
+    return "Physical 3D printed item made by PRINTZ By Khan from the unmodified source model; color, material, scale, and print settings may vary. No modified model files are redistributed.";
+  }
+  if (product.share_alike_required || license.includes("by-sa")) {
+    return "Physical 3D printed item made by PRINTZ By Khan. Color, material, scale, and print-setting adjustments may be used; adaptations remain subject to the share-alike license terms where applicable. No digital model files are redistributed.";
+  }
+  return "Physical 3D printed item made by PRINTZ By Khan. Color, material, scale, and print-setting adjustments may be used. No digital model files are redistributed.";
 }
 
 function cleanBuyerText(value: string | null | undefined) {
