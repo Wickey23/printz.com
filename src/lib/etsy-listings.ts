@@ -139,13 +139,15 @@ async function syncListingImages({
     const text = await response.text();
     if (!response.ok) throw new EtsyApiError("Etsy image upload failed", response.status, text);
     uploaded++;
+    await delay(250);
   }
 
   return uploaded;
 }
 
 async function getListingImageCount({ apiKey, accessToken, shopId, listingId }: { apiKey: string; accessToken: string; shopId: string; listingId: number }) {
-  const response = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings/${listingId}/images`, {
+  void shopId;
+  const response = await fetch(`https://api.etsy.com/v3/application/listings/${listingId}/images`, {
     headers: { Authorization: `Bearer ${accessToken}`, "x-api-key": apiKey },
   });
   if (!response.ok) return 0;
@@ -156,8 +158,9 @@ async function getListingImageCount({ apiKey, accessToken, shopId, listingId }: 
 async function downloadImage(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`Could not download image ${url}`);
-  const contentType = response.headers.get("content-type") || "image/jpeg";
-  if (!contentType.startsWith("image/")) throw new Error(`URL is not an image: ${url}`);
+  const headerContentType = response.headers.get("content-type") || "";
+  const contentType = imageContentType(url, headerContentType);
+  if (!contentType) throw new Error(`URL is not an image: ${url}`);
   return {
     bytes: new Uint8Array(await response.arrayBuffer()),
     contentType,
@@ -193,4 +196,17 @@ class EtsyApiError extends Error {
     this.name = "EtsyApiError";
     this.status = status;
   }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function imageContentType(url: string, headerContentType: string) {
+  if (headerContentType.startsWith("image/")) return headerContentType;
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  return "";
 }
