@@ -53,7 +53,7 @@ export async function createMissingEtsyDrafts({
     .or("etsy_url.is.null,etsy_url.eq.")
     .is("archived_at", null)
     .order("updated_at", { ascending: false })
-    .limit(Math.max(1, Math.min(limit, 50)));
+    .limit(Math.max(1, Math.min(limit, 100)));
 
   if (error) return emptyResult(error.message, false);
 
@@ -69,7 +69,7 @@ export async function createMissingEtsyDrafts({
     const readiness = getEtsyReadiness(product, { imageCount });
     const requirements = etsyListingRequirements(product, { hasOAuthToken: Boolean(accessToken), settings });
 
-    if (requirements.length || !readiness.readyToDraft) {
+    if (requirements.length || !readiness.readyToDraft || hasTrademarkRisk(product)) {
       skipped++;
       continue;
     }
@@ -193,6 +193,7 @@ async function auditEtsyDraft({
         : "Needs review: required attribution details missing from Etsy description."
       : "Attribution not required or not provided.",
     sourceTitleLooksRelated(product) ? "Source title looks related to product title." : "Needs review: source title may not match product title.",
+    hasTrademarkRisk(product) ? "Needs review: possible protected brand/trademark term detected." : "Trademark scan OK.",
   ];
   const ok = checks.every((check) => !check.startsWith("Needs review"));
 
@@ -220,6 +221,12 @@ async function fetchEtsyJson<T>(url: string, accessToken: string, apiKey: string
     await delay(750);
   }
   throw new Error("Etsy audit read failed.");
+}
+
+function hasTrademarkRisk(product: Product) {
+  if (product.trademark_review_status === "Needs Review") return true;
+  const text = [product.name, product.short_description, product.full_description, product.source_url, ...(product.tags || [])].join(" ");
+  return /\b(stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|pok[eé]mon|disney|marvel|star wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity)\b/i.test(text);
 }
 
 function hasCompleteAttribution(description: string, product: Product) {

@@ -119,8 +119,9 @@ export async function seedChatsListProductDrafts({
   const values = await sheets.getValues(`${quoteSheetName(sheetName)}!A1:AQ1000`);
   const rows = parseChatsRows(values)
     .filter((row) => !isClearlyBlocked(row))
+    .filter((row) => !hasTrademarkRisk([row.product, row.category, row.tags, row.sellingBlurb, row.sourceUrl].join(" ")))
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence)
-    .slice(0, Math.max(1, Math.min(limit * 3, 80)));
+    .slice(0, Math.max(1, Math.min(limit * 5, 500)));
 
   const result = empty();
   for (const row of rows) {
@@ -130,6 +131,10 @@ export async function seedChatsListProductDrafts({
     try {
       const source = await resolveMakerWorldSource(row);
       if (!source.commercialUseAllowed) {
+        result.skipped++;
+        continue;
+      }
+      if (hasTrademarkRisk([row.product, source.title, source.sourceUrl, source.tags.join(" ")].join(" "))) {
         result.skipped++;
         continue;
       }
@@ -220,6 +225,10 @@ function isClearlyBlocked(row: ChatsRow) {
   return false;
 }
 
+function hasTrademarkRisk(value: string) {
+  return /\b(stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|pok[eé]mon|disney|marvel|star wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity)\b/i.test(value);
+}
+
 async function findMakerWorldSourceUrl(row: ChatsRow) {
   const queries = makerWorldSearchQueries(row);
   const seen = new Set<string>();
@@ -246,6 +255,7 @@ async function findMakerWorldSourceUrl(row: ChatsRow) {
       const source = await verifyMakerWorld(sourceUrl).catch(() => null);
       if (!source?.commercialUseAllowed || !source.images.length) continue;
       if (!sourceLooksRelated(row, source, hit)) continue;
+      if (hasTrademarkRisk([row.product, source.title, source.sourceUrl, source.tags.join(" ")].join(" "))) continue;
       candidates.push({ source, score: makerWorldCandidateScore(row, source, hit) });
     }
 
