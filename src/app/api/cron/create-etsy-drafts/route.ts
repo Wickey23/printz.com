@@ -21,7 +21,7 @@ async function handle(request: Request) {
   }
 
   const dryRun = url.searchParams.get("dryRun") === "true";
-  const limit = Number(url.searchParams.get("limit") || 20);
+  const limit = Number(url.searchParams.get("limit") || 5);
 
   try {
     const result = await createMissingEtsyDrafts({ dryRun, limit });
