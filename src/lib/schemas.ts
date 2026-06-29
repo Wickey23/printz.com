@@ -75,6 +75,13 @@ export const productSchema = z.object({
     .transform((value) => splitList(value)),
   processing_time: z.string().trim().max(500).optional().transform((value) => value || null),
   care_instructions: z.string().trim().max(1500).optional().transform((value) => value || null),
+  sales_likelihood_score: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? Number(value) : 50))
+    .refine((value) => Number.isFinite(value) && value >= 1 && value <= 100, "Enter a score from 1 to 100."),
+  sales_likelihood_notes: z.string().trim().max(2000).optional().transform((value) => value || null),
   featured: z.boolean(),
   active: z.boolean(),
 });

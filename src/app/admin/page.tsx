@@ -6,14 +6,18 @@ import { requireAdmin } from "@/lib/auth";
 import { getAllProductsForAdmin, getProductMediaForProducts, getProductSyncHealth, getSuggestionsForAdmin } from "@/lib/data";
 import { etsyReadinessLabel, getEtsyReadiness } from "@/lib/etsy-readiness";
 import { getLaunchAudit, type LaunchAuditSeverity, type LaunchAuditSummary } from "@/lib/launch-audit";
+import { salesLikelihood } from "@/lib/sales-likelihood";
+import type { Product, ProductMedia } from "@/lib/types";
 import { formatPrice } from "@/lib/utils";
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
   const auth = await requireAdmin();
   if (!auth.approved) return <AccessDenied email={auth.user.email || ""} />;
 
+  const params = await searchParams;
   const [products, suggestions, syncHealth] = await Promise.all([getAllProductsForAdmin(), getSuggestionsForAdmin(), getProductSyncHealth()]);
   const mediaByProductId = await getProductMediaForProducts(products.map((product) => product.id));
+  const sortedProducts = sortAdminProducts(products, params.sort || "newest", mediaByProductId);
   const launchAudit = getLaunchAudit({ mediaByProductId, products, syncHealth });
 
   return (
@@ -114,20 +118,36 @@ export default async function AdminPage() {
 
         <section className="rounded-lg border border-white/10 bg-zinc-900/70">
           <div className="border-b border-white/10 p-5">
-            <h2 className="text-xl font-bold">Products</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-bold">Products</h2>
+              <div className="flex flex-wrap gap-2 text-xs font-bold">
+                <SortLink active={(params.sort || "newest") === "newest"} href="/admin" label="Newest" />
+                <SortLink active={params.sort === "sell-score"} href="/admin?sort=sell-score" label="Best likely sellers" />
+                <SortLink active={params.sort === "needs-review"} href="/admin?sort=needs-review" label="Needs review" />
+              </div>
+            </div>
           </div>
           <div className="divide-y divide-white/10">
-            {products.map((product) => (
+            {sortedProducts.map((product) => (
               <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto]" key={product.id}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-bold text-zinc-50">{product.name}</h3>
                     <span className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300">{product.category}</span>
+                    {(() => {
+                      const sales = productSales(product, mediaByProductId[product.id] || []);
+                      return (
+                        <span className="rounded bg-emerald-400/15 px-2 py-1 text-xs text-emerald-200">
+                          Sell score {sales.score}
+                        </span>
+                      );
+                    })()}
                     <EtsyReadinessBadge product={product} />
                     {!product.active ? <span className="rounded bg-red-500/15 px-2 py-1 text-xs text-red-200">Inactive</span> : null}
                     {product.featured ? <span className="rounded bg-amber-300/15 px-2 py-1 text-xs text-amber-200">Featured</span> : null}
                   </div>
                   <p className="mt-2 text-sm text-zinc-400">{product.short_description}</p>
+                  <p className="mt-2 text-sm leading-6 text-emerald-100/90">{productSales(product, mediaByProductId[product.id] || []).notes}</p>
                   <p className="mt-2 text-sm font-semibold text-zinc-200">{formatPrice(product.price)}</p>
                   {product.source_url ? (
                     <a className="mt-2 inline-flex text-sm font-bold text-amber-200" href={product.source_url} rel="noreferrer" target="_blank">
@@ -192,6 +212,33 @@ export default async function AdminPage() {
         </section>
       </div>
     </section>
+  );
+}
+
+function sortAdminProducts(products: Awaited<ReturnType<typeof getAllProductsForAdmin>>, sort: string, mediaByProductId: Record<string, ProductMedia[]>) {
+  const copy = [...products];
+  if (sort === "sell-score") {
+    return copy.sort((a, b) => productSales(b, mediaByProductId[b.id] || []).score - productSales(a, mediaByProductId[a.id] || []).score || String(b.created_at).localeCompare(String(a.created_at)));
+  }
+  if (sort === "needs-review") {
+    return copy.sort((a, b) => Number(a.workflow_status !== "Needs Review") - Number(b.workflow_status !== "Needs Review") || String(b.created_at).localeCompare(String(a.created_at)));
+  }
+  return copy;
+}
+
+function productSales(product: Product, media: ProductMedia[]) {
+  if (product.sales_likelihood_score && product.sales_likelihood_notes) {
+    return { score: product.sales_likelihood_score, notes: product.sales_likelihood_notes };
+  }
+  const imageCount = new Set([product.main_image_url, ...media.filter((item) => item.media_type === "image").map((item) => item.url)].filter(Boolean)).size;
+  return salesLikelihood({ ...product, imageCount });
+}
+
+function SortLink({ active, href, label }: { active: boolean; href: string; label: string }) {
+  return (
+    <Link className={active ? "rounded bg-amber-300 px-3 py-2 text-zinc-950" : "rounded border border-white/10 px-3 py-2 text-zinc-300"} href={href}>
+      {label}
+    </Link>
   );
 }
 

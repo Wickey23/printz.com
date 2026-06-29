@@ -580,6 +580,8 @@ function parseProductForm(formData: FormData) {
     finish_options: textFromForm(formData, "finish_options"),
     processing_time: textFromForm(formData, "processing_time"),
     care_instructions: textFromForm(formData, "care_instructions"),
+    sales_likelihood_score: textFromForm(formData, "sales_likelihood_score"),
+    sales_likelihood_notes: textFromForm(formData, "sales_likelihood_notes"),
     source_url: textFromForm(formData, "source_url"),
     license_notes: textFromForm(formData, "license_notes"),
     tags: textFromForm(formData, "tags"),
@@ -588,6 +590,17 @@ function parseProductForm(formData: FormData) {
   });
 
   return parsed;
+}
+
+function isMissingSalesLikelihoodColumn(error: { message?: string; code?: string } | null) {
+  return Boolean(error?.message?.includes("sales_likelihood_") || (error?.message?.includes("Could not find") && error.message.includes("products")));
+}
+
+function withoutSalesLikelihood<T extends Record<string, unknown>>(payload: T) {
+  const { sales_likelihood_score: _score, sales_likelihood_notes: _notes, ...rest } = payload;
+  void _score;
+  void _notes;
+  return rest;
 }
 
 function optionalNumber(value: string) {
@@ -806,7 +819,10 @@ export async function createProduct(_: ActionState, formData: FormData): Promise
   const supabase = createSupabaseAdminClient();
   if (!supabase) return failure("Supabase service role key is required for admin product management.");
 
-  const { data, error } = await supabase.from("products").insert(parsed.data).select("id").single();
+  let { data, error } = await supabase.from("products").insert(parsed.data).select("id").single();
+  if (isMissingSalesLikelihoodColumn(error)) {
+    ({ data, error } = await supabase.from("products").insert(withoutSalesLikelihood(parsed.data)).select("id").single());
+  }
   if (error) return failure(error.message);
   if (data?.id) await syncProductMedia(data.id, formData, supabase);
 
@@ -829,10 +845,16 @@ export async function updateProduct(_: ActionState, formData: FormData): Promise
   if (!supabase) return failure("Supabase service role key is required for admin product management.");
 
   const { data: existingProduct } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
-  const { error } = await supabase
+  let { error } = await supabase
     .from("products")
     .update({ ...parsed.data, updated_at: new Date().toISOString() })
     .eq("id", id);
+  if (isMissingSalesLikelihoodColumn(error)) {
+    ({ error } = await supabase
+      .from("products")
+      .update({ ...withoutSalesLikelihood(parsed.data), updated_at: new Date().toISOString() })
+      .eq("id", id));
+  }
 
   if (error) return failure(error.message);
   await syncProductMedia(id, formData, supabase);

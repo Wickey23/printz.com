@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "../src/lib/supabase/server";
 import { getEffectiveEtsyRuntimeSettings, getValidEtsyOAuthToken } from "../src/lib/etsy-auth";
 import { createOrSyncEtsyListing } from "../src/lib/etsy-listings";
+import { salesLikelihood } from "../src/lib/sales-likelihood";
 import type { Product, ProductMedia } from "../src/lib/types";
 
 type Hit = {
@@ -46,11 +47,136 @@ type LicenseInfo = {
 
 const target = Number(process.argv[2] || process.env.PRINTZ_BATCH_TARGET || 20);
 const minImages = Number(process.env.PRINTZ_MIN_ETSY_IMAGES || 5);
+const makerWorldPages = Number(process.env.PRINTZ_MAKERWORLD_SEARCH_PAGES || 5);
+const makerWorldPageSize = Number(process.env.PRINTZ_MAKERWORLD_SEARCH_LIMIT || 20);
 const riskPattern =
-  /\b(oral\s*-?b|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox|weapon|gun|knife)\b/i;
+  /\b(oral\s*-?b|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox|weapon|gun|knife)\b/i;
+const awkwardTitlePattern = /\b(porta|guardanapos|saches|modified|no supports?|print profile)\b/i;
 const nonAsciiPattern = /[^\x00-\x7F]/;
 
 const queries = [
+  "desk organizer",
+  "desktop organizer",
+  "office organizer",
+  "pen holder",
+  "pencil holder",
+  "marker organizer",
+  "marker stand",
+  "paint brush holder",
+  "paintbrush holder",
+  "paint bottle rack",
+  "tool holder",
+  "small parts organizer",
+  "parts tray",
+  "screw tray",
+  "screw organizer",
+  "bolt organizer",
+  "bit holder",
+  "drill bit holder",
+  "hex bit holder",
+  "socket holder",
+  "socket organizer",
+  "wrench holder",
+  "pliers holder",
+  "clamp holder",
+  "sandpaper holder",
+  "pegboard organizer",
+  "pegboard shelf",
+  "pegboard bin",
+  "pegboard hook",
+  "wall hook",
+  "coat hook",
+  "key holder",
+  "key rack",
+  "mail organizer",
+  "mail sorter",
+  "entryway organizer",
+  "remote holder",
+  "remote caddy",
+  "phone stand",
+  "phone holder",
+  "tablet stand",
+  "tablet holder",
+  "watch stand",
+  "headphone stand",
+  "headphone holder",
+  "headphone hook",
+  "earbud holder",
+  "cable holder",
+  "cable organizer",
+  "cable clip",
+  "cord clip",
+  "wire clip",
+  "usb holder",
+  "sd card holder",
+  "memory card holder",
+  "card holder case",
+  "camera battery holder",
+  "battery holder",
+  "battery organizer",
+  "kitchen organizer",
+  "spice rack",
+  "spice organizer",
+  "tea organizer",
+  "tea bag holder",
+  "coffee filter holder",
+  "napkin holder",
+  "utensil holder",
+  "sponge holder",
+  "dish brush holder",
+  "soap dish",
+  "soap saver",
+  "toothbrush holder",
+  "toothbrush stand",
+  "razor holder",
+  "toothpaste squeezer",
+  "bathroom organizer",
+  "makeup organizer",
+  "makeup brush holder",
+  "jewelry tray",
+  "jewelry holder",
+  "ring holder",
+  "earring holder",
+  "earring stand",
+  "plant pot",
+  "plant holder",
+  "wall planter",
+  "hanging planter",
+  "succulent planter",
+  "plant saucer",
+  "propagation station",
+  "test tube holder",
+  "seed organizer",
+  "plant label",
+  "garden marker",
+  "book holder",
+  "book stand",
+  "book page holder",
+  "reading stand",
+  "photo frame",
+  "picture frame",
+  "frame stand",
+  "fridge magnet",
+  "magnet holder",
+  "coaster holder",
+  "coaster set",
+  "coaster stand",
+  "bag clip",
+  "chip clip",
+  "jar lid holder",
+  "label holder",
+  "bin label",
+  "drawer divider",
+  "drawer organizer",
+  "closet divider",
+  "hanger organizer",
+  "sewing organizer",
+  "thread holder",
+  "spool holder",
+  "bobbin holder",
+  "craft organizer",
+  "bead tray",
+  "bead organizer",
   "coaster holder geometric",
   "napkin holder modern",
   "soap saver bathroom",
@@ -102,6 +228,12 @@ const queries = [
   "fridge magnet frame",
 ];
 
+const extraQueries = (process.env.PRINTZ_EXTRA_MAKERWORLD_QUERIES || "")
+  .split(/[\n,]+/)
+  .map((query) => query.trim())
+  .filter(Boolean);
+const searchQueries = Array.from(new Set([...queries, ...extraQueries]));
+
 async function main() {
   const supabase = createSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase service role key is required.");
@@ -120,7 +252,7 @@ async function main() {
   const created: unknown[] = [];
   const skipped: unknown[] = [];
 
-  for (const query of queries) {
+  for (const query of searchQueries) {
     if (created.length >= target) break;
     const hits = await searchMakerWorld(query);
     for (const hit of hits) {
@@ -176,6 +308,19 @@ async function createPublishReadyDraft({
   const name = buyerTitle(source.title, query);
   const slug = await uniqueSlug(supabase, slugify(name));
   const notes = licenseNotes(source);
+  const sales = salesLikelihood({
+    name,
+    category,
+    price: priceFor(query),
+    tags: tagsFor(source, category),
+    source_url: source.sourceUrl,
+    license_type: source.license.label,
+    commercial_sale_allowed: true,
+    media_status: "Ready",
+    rights_status: "Ready",
+    query,
+    imageCount: source.images.length,
+  });
   const payload = {
     name,
     slug,
@@ -203,6 +348,8 @@ async function createPublishReadyDraft({
     source_url: source.sourceUrl,
     license_notes: notes,
     tags: tagsFor(source, category),
+    sales_likelihood_score: sales.score,
+    sales_likelihood_notes: sales.notes,
     featured: false,
     active: false,
     workflow_status: "Draft Ready",
@@ -223,7 +370,10 @@ async function createPublishReadyDraft({
     updated_at: new Date().toISOString(),
   };
 
-  const { data: inserted, error } = await supabase.from("products").insert(payload).select("*").single();
+  let { data: inserted, error } = await supabase.from("products").insert(payload).select("*").single();
+  if (isMissingSalesLikelihoodColumn(error)) {
+    ({ data: inserted, error } = await supabase.from("products").insert(withoutSalesLikelihood(payload)).select("*").single());
+  }
   if (error) throw error;
   const product = inserted as Product;
 
@@ -261,13 +411,24 @@ async function createPublishReadyDraft({
 }
 
 async function searchMakerWorld(query: string) {
-  const url = new URL("https://api.bambulab.com/v1/search-service/select/design2");
-  url.searchParams.set("keyword", query);
-  url.searchParams.set("limit", "20");
-  const response = await fetch(url, { headers: { accept: "application/json", "user-agent": "PRINTZ automation" }, cache: "no-store" });
-  if (!response.ok) return [];
-  const payload = (await response.json()) as { hits?: Hit[] };
-  return (payload.hits || []).sort((a, b) => candidateScore(b) - candidateScore(a));
+  const hits: Hit[] = [];
+  const seen = new Set<number>();
+  for (let page = 0; page < Math.max(1, makerWorldPages); page++) {
+    const url = new URL("https://api.bambulab.com/v1/search-service/select/design2");
+    url.searchParams.set("keyword", query);
+    url.searchParams.set("limit", String(makerWorldPageSize));
+    url.searchParams.set("offset", String(page * makerWorldPageSize));
+    const response = await fetch(url, { headers: { accept: "application/json", "user-agent": "PRINTZ automation" }, cache: "no-store" });
+    if (!response.ok) continue;
+    const payload = (await response.json()) as { hits?: Hit[] };
+    for (const hit of payload.hits || []) {
+      if (!hit.id || seen.has(hit.id)) continue;
+      seen.add(hit.id);
+      hits.push(hit);
+    }
+    await delay(100);
+  }
+  return hits.sort((a, b) => candidateScore(b) - candidateScore(a));
 }
 
 async function getMakerWorldDesign(id: number) {
@@ -413,7 +574,7 @@ function buyerTitle(sourceTitle: string, query: string) {
     .replace(/^[^A-Za-z0-9]+/, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (cleaned.length >= 8 && cleaned.length <= 90 && !hasRisk(cleaned)) return cleaned;
+  if (cleaned.length >= 8 && cleaned.length <= 90 && !hasRisk(cleaned) && !awkwardTitlePattern.test(cleaned)) return cleaned;
   return cleanText(query)
     .replace(/\b(generic|modern)\b/gi, "")
     .replace(/\s+/g, " ")
@@ -452,6 +613,17 @@ function candidateScore(hit: Hit) {
 
 function hasRisk(value: string) {
   return riskPattern.test(value) || nonAsciiPattern.test(value);
+}
+
+function isMissingSalesLikelihoodColumn(error: { message?: string } | null) {
+  return Boolean(error?.message?.includes("sales_likelihood_"));
+}
+
+function withoutSalesLikelihood<T extends Record<string, unknown>>(payload: T) {
+  const { sales_likelihood_score: _score, sales_likelihood_notes: _notes, ...rest } = payload;
+  void _score;
+  void _notes;
+  return rest;
 }
 
 function cleanText(value: string) {

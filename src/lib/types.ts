@@ -46,6 +46,8 @@ export type Product = {
   pricing_status?: string | null;
   estimated_cost?: number | null;
   suggested_price?: number | null;
+  sales_likelihood_score?: number | null;
+  sales_likelihood_notes?: string | null;
   tags: string[] | null;
   featured: boolean;
   active: boolean;

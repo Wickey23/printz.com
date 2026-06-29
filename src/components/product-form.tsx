@@ -160,13 +160,35 @@ export function ProductForm({ galleryMediaUrls = [], product }: { galleryMediaUr
                 placeholder="Made to order in 2-4 business days"
               />
             </div>
+          <TextArea
+            defaultValue={product?.care_instructions}
+            error={state.errors?.care_instructions}
+            label="Care instructions"
+            name="care_instructions"
+            placeholder="Keep away from high heat. Clean gently with a dry or slightly damp cloth."
+            rows={3}
+          />
+          </section>
+          <section className="grid gap-5 rounded-lg border border-white/10 bg-zinc-950 p-5">
+            <div>
+              <h2 className="text-lg font-black text-zinc-50">Admin sales notes</h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                Internal score and research notes for prioritizing products likely to sell well on Etsy.
+              </p>
+            </div>
+            <Field
+              defaultValue={product?.sales_likelihood_score ?? 50}
+              error={state.errors?.sales_likelihood_score}
+              label="Sell-likelihood score"
+              name="sales_likelihood_score"
+              type="number"
+            />
             <TextArea
-              defaultValue={product?.care_instructions}
-              error={state.errors?.care_instructions}
-              label="Care instructions"
-              name="care_instructions"
-              placeholder="Keep away from high heat. Clean gently with a dry or slightly damp cloth."
-              rows={3}
+              defaultValue={product?.sales_likelihood_notes}
+              error={state.errors?.sales_likelihood_notes}
+              label="Why this is likely to sell"
+              name="sales_likelihood_notes"
+              rows={4}
             />
           </section>
           <Field
