@@ -385,12 +385,10 @@ function fullDescription(row: ChatsRow, source: VerifiedMakerWorld, title: strin
   return [
     row.sellingBlurb || row.shortDescription || `${title} is a made-to-order 3D printed product selected from PRINTZ product research.`,
     row.shortDescription && row.shortDescription !== row.sellingBlurb ? row.shortDescription : "",
-    source.summary ? `Source model notes: ${source.summary}` : "",
     `Materials: ${materials(row, source)}.`,
     "What to expect: made-to-order 3D printed products can have visible layer lines and small finish variations.",
     row.differentiation ? `Options: ${row.differentiation}` : "",
-    row.nextAction ? `Admin production note: ${row.nextAction}` : "",
-    licenseNotes(row, source),
+    sourceLicenseSummary(row, source),
   ].filter(Boolean).join("\n\n").slice(0, 5000);
 }
 
@@ -415,6 +413,18 @@ function licenseNotes(row: ChatsRow, source: VerifiedMakerWorld) {
     source.creator ? `Attribution: ${source.title || row.product} by ${source.creator} on MakerWorld.` : "",
     row.modificationRules ? `Sheet notes: ${row.modificationRules}` : "",
   ].filter(Boolean).join(" ");
+}
+
+function sourceLicenseSummary(row: ChatsRow, source: VerifiedMakerWorld) {
+  const attribution = source.attributionRequired && source.creator
+    ? `Attribution: ${source.title || row.product} by ${source.creator} on MakerWorld, licensed ${licenseLabel(source.license)}.`
+    : `Source model by ${source.creator || "a MakerWorld creator"} on MakerWorld. License: ${licenseLabel(source.license)}.`;
+  const terms = [
+    source.attributionRequired ? "Attribution is required and included in the Etsy listing." : "Attribution is optional under this license.",
+    source.modificationAllowed ? "Commercial sale and print-setting/color adjustments are allowed." : "Sell unmodified only; do not publish modified/remixed model files.",
+    source.shareAlikeRequired ? "Share-alike terms apply to adaptations." : "",
+  ].filter(Boolean).join(" ");
+  return `${attribution} ${terms}`;
 }
 
 function rightsStatus(source: VerifiedMakerWorld) {

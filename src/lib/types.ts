@@ -34,6 +34,12 @@ export type Product = {
   creator_name?: string | null;
   license_type?: string | null;
   license_url?: string | null;
+  commercial_sale_allowed?: boolean | null;
+  modification_allowed?: boolean | null;
+  attribution_required?: boolean | null;
+  share_alike_required?: boolean | null;
+  attribution_text?: string | null;
+  trademark_review_status?: string | null;
   rights_status?: string | null;
   media_status?: string | null;
   drive_media_folder_url?: string | null;
