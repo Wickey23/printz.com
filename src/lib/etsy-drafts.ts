@@ -215,9 +215,13 @@ function listLine(label: string, values?: string[] | null) {
 
 function buyerSafeTitle(value: string) {
   return value
+    .replace(/\bNintendo\s+Switch\s+Console\b/gi, "Game Console")
     .replace(/\bNintendo\s+Switch\b/gi, "Game Console")
+    .replace(/\bXbox\s+One\s*\/\s*Series\s*X\|S\s+Controller\b/gi, "Game Controller")
     .replace(/\bXbox\s+One\s*\/\s*Series\s*X\|S\b/gi, "Game Controller")
     .replace(/\bXbox\b/gi, "Game Controller")
+    .replace(/\bGame Controller\s+Controller\b/gi, "Game Controller")
+    .replace(/\bGame Console\s+Console\b/gi, "Game Console")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
