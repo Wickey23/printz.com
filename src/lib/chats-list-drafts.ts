@@ -70,6 +70,20 @@ type MakerWorldDesign = {
   }>;
 };
 
+type MakerWorldSearchHit = {
+  id?: number;
+  title?: string;
+  slug?: string;
+  likeCount?: number;
+  collectionCount?: number;
+  printCount?: number;
+  downloadCount?: number;
+};
+
+type MakerWorldSearchResponse = {
+  hits?: MakerWorldSearchHit[];
+};
+
 type VerifiedMakerWorld = {
   modelId: string;
   title: string;
@@ -104,7 +118,6 @@ export async function seedChatsListProductDrafts({
   const sheets = new GoogleSheetsClient({ spreadsheetId, env: process.env });
   const values = await sheets.getValues(`${quoteSheetName(sheetName)}!A1:AQ1000`);
   const rows = parseChatsRows(values)
-    .filter((row) => row.sourceUrl.includes("makerworld.com"))
     .filter((row) => !isClearlyBlocked(row))
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence)
     .slice(0, Math.max(1, Math.min(limit * 3, 80)));
@@ -115,7 +128,7 @@ export async function seedChatsListProductDrafts({
     result.checked++;
 
     try {
-      const source = await verifyMakerWorld(row.sourceUrl);
+      const source = await resolveMakerWorldSource(row);
       if (!source.commercialUseAllowed) {
         result.skipped++;
         continue;
@@ -142,6 +155,14 @@ export async function seedChatsListProductDrafts({
   }
 
   return result;
+}
+
+async function resolveMakerWorldSource(row: ChatsRow) {
+  if (row.sourceUrl.includes("makerworld.com")) return verifyMakerWorld(row.sourceUrl);
+
+  const sourceUrl = await findMakerWorldSourceUrl(row);
+  if (!sourceUrl) throw new Error("No MakerWorld source found for Chats List row.");
+  return verifyMakerWorld(sourceUrl);
 }
 
 function parseChatsRows(values: unknown[][]): ChatsRow[] {
@@ -197,6 +218,72 @@ function isClearlyBlocked(row: ChatsRow) {
   if (/\b(non[\s-]?commercial|cc[\s-]?by[\s-]?nc|\bnc\b|cannot sell|do not sell|no commercial|rejected)\b/i.test(text)) return true;
   if (/needs license review|pending exact license|pending verification|do not sell until/i.test(text)) return true;
   return false;
+}
+
+async function findMakerWorldSourceUrl(row: ChatsRow) {
+  const queries = makerWorldSearchQueries(row);
+  const seen = new Set<string>();
+  const candidates: Array<{ source: VerifiedMakerWorld; score: number }> = [];
+
+  for (const query of queries) {
+    const url = new URL("https://api.bambulab.com/v1/search-service/select/design2");
+    url.searchParams.set("keyword", query);
+    url.searchParams.set("limit", "8");
+
+    const response = await fetch(url, {
+      headers: { accept: "application/json", "user-agent": "PRINTZ automation" },
+      cache: "no-store",
+    });
+    if (!response.ok) continue;
+
+    const payload = (await response.json()) as MakerWorldSearchResponse;
+    for (const hit of payload.hits || []) {
+      if (!hit.id) continue;
+      const sourceUrl = makerWorldSourceUrl(hit);
+      if (seen.has(sourceUrl)) continue;
+      seen.add(sourceUrl);
+
+      const source = await verifyMakerWorld(sourceUrl).catch(() => null);
+      if (!source?.commercialUseAllowed || !source.images.length) continue;
+      if (!sourceLooksRelated(row, source, hit)) continue;
+      candidates.push({ source, score: makerWorldCandidateScore(row, source, hit) });
+    }
+
+    if (candidates.length) break;
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.source.sourceUrl || "";
+}
+
+function makerWorldSearchQueries(row: ChatsRow) {
+  return normalizeList([
+    row.product,
+    [row.product, row.category].filter(Boolean).join(" "),
+    splitList(row.tags).slice(0, 4).join(" "),
+  ])
+    .map((query) => query.replace(/\b(custom|personalized|printable|3d printed|gift)\b/gi, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function makerWorldSourceUrl(hit: MakerWorldSearchHit) {
+  const slug = hit.slug ? `-${hit.slug}` : "";
+  return `https://makerworld.com/en/models/${hit.id}${slug}?from=search`;
+}
+
+function sourceLooksRelated(row: ChatsRow, source: VerifiedMakerWorld, hit: MakerWorldSearchHit) {
+  const rowWords = significantWords([row.product, row.category, row.tags].join(" "));
+  const sourceWords = significantWords([source.title, hit.title, hit.slug].join(" "));
+  if (!rowWords.length || !sourceWords.length) return true;
+  return rowWords.some((word) => sourceWords.includes(word));
+}
+
+function makerWorldCandidateScore(row: ChatsRow, source: VerifiedMakerWorld, hit: MakerWorldSearchHit) {
+  const textScore = significantWords([row.product, row.tags].join(" ")).filter((word) => significantWords([source.title, hit.title, hit.slug].join(" ")).includes(word)).length * 1000;
+  const engagement = Number(hit.printCount || 0) * 2 + Number(hit.downloadCount || 0) + Number(hit.collectionCount || 0) * 0.5 + Number(hit.likeCount || 0) * 0.25;
+  const licenseBoost = source.attributionRequired ? 0 : 250;
+  return textScore + engagement + licenseBoost;
 }
 
 async function verifyMakerWorld(sourceUrl: string): Promise<VerifiedMakerWorld> {
@@ -520,6 +607,16 @@ function splitList(value: string) {
 
 function normalizeList(values: string[]) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
+}
+
+function significantWords(value: string) {
+  const stop = new Set(["and", "the", "with", "for", "style", "printed", "printz", "custom", "personalized", "gift"]);
+  return value
+    .toLowerCase()
+    .replace(/\b(headset|headphone|headphones)\b/g, "audio")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length >= 3 && !stop.has(word));
 }
 
 function slugify(value: string) {

@@ -88,6 +88,13 @@ export async function createMissingEtsyDrafts({
         media,
         publish: false,
       });
+      const audit = await auditEtsyDraft({
+        accessToken,
+        apiKey: process.env.ETSY_API_KEY!,
+        product,
+        listingId: result.listingId,
+        uploadedImages: result.uploadedImages,
+      });
 
       const { error: updateError } = await supabase
         .from("products")
@@ -95,7 +102,11 @@ export async function createMissingEtsyDrafts({
           etsy_listing_id: result.listingId,
           etsy_url: result.url,
           etsy_state: result.state || "draft",
-          active: true,
+          active: audit.ok,
+          workflow_status: audit.ok ? product.workflow_status || "Draft Ready" : "Needs Review",
+          rights_status: audit.ok ? product.rights_status : "Needs Review",
+          media_status: audit.imageCount > 0 ? product.media_status || "Ready" : "Needs Review",
+          license_notes: appendAuditNote(product.license_notes, audit.note),
           updated_at: new Date().toISOString(),
         })
         .eq("id", product.id);
@@ -140,6 +151,118 @@ async function productMedia(supabase: NonNullable<ReturnType<typeof createSupaba
     .eq("product_id", productId)
     .order("sort_order", { ascending: true });
   return (data || []) as ProductMedia[];
+}
+
+async function auditEtsyDraft({
+  accessToken,
+  apiKey,
+  product,
+  listingId,
+  uploadedImages,
+}: {
+  accessToken: string;
+  apiKey: string;
+  product: Product;
+  listingId: number;
+  uploadedImages: number;
+}) {
+  const [images, listing] = await Promise.all([
+    fetchEtsyJson<{ count?: number; results?: unknown[] }>(`https://api.etsy.com/v3/application/listings/${listingId}/images`, accessToken, apiKey),
+    fetchEtsyJson<{
+      description?: string;
+      price?: { amount?: number; divisor?: number } | string | number;
+      title?: string;
+    }>(`https://api.etsy.com/v3/application/listings/${listingId}`, accessToken, apiKey),
+  ]);
+
+  const description = String(listing.description || "");
+  const imageCount = images.count ?? images.results?.length ?? 0;
+  const expectedPrice = Number(product.price || 0);
+  const actualPrice = etsyPrice(listing.price);
+  const checks = [
+    imageCount > 0 ? `Images OK (${imageCount} on Etsy, ${uploadedImages} newly uploaded).` : "Needs review: Etsy returned 0 listing images.",
+    description.length >= 250 ? "Description length OK." : "Needs review: Etsy description looks too short.",
+    expectedPrice > 0 && actualPrice !== null && Math.abs(actualPrice - expectedPrice) < 0.01
+      ? `Price OK ($${actualPrice.toFixed(2)}).`
+      : `Needs review: price mismatch or unreadable Etsy price (site $${expectedPrice.toFixed(2)}, Etsy ${actualPrice === null ? "unknown" : `$${actualPrice.toFixed(2)}`}).`,
+    product.source_url && description.includes(product.source_url) ? "Source URL included." : "Needs review: source URL missing from Etsy description.",
+    product.license_type && description.includes(product.license_type) ? `License included (${product.license_type}).` : "Needs review: license text missing from Etsy description.",
+    product.attribution_text && product.attribution_required
+      ? description.includes(product.attribution_text)
+        ? "Required attribution included."
+        : "Needs review: required attribution missing from Etsy description."
+      : "Attribution not required or not provided.",
+    sourceTitleLooksRelated(product) ? "Source title looks related to product title." : "Needs review: source title may not match product title.",
+  ];
+  const ok = checks.every((check) => !check.startsWith("Needs review"));
+
+  return {
+    ok,
+    imageCount,
+    note: [
+      `PRINTZ Etsy draft audit ${new Date().toISOString()}`,
+      `Listing ${listingId}: ${ok ? "PASSED" : "NEEDS REVIEW"}.`,
+      ...checks.map((check) => `- ${check}`),
+    ].join("\n"),
+  };
+}
+
+async function fetchEtsyJson<T>(url: string, accessToken: string, apiKey: string): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}`, "x-api-key": apiKey },
+    });
+    const text = await response.text();
+    if (response.ok) return JSON.parse(text) as T;
+    if (response.status !== 429 || attempt === 2) {
+      throw new Error(`Etsy audit read failed with ${response.status}: ${text.slice(0, 240)}`);
+    }
+    await delay(750);
+  }
+  throw new Error("Etsy audit read failed.");
+}
+
+function etsyPrice(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value && typeof value === "object" && "amount" in value && "divisor" in value) {
+    const money = value as { amount?: number; divisor?: number };
+    if (Number.isFinite(money.amount) && Number.isFinite(money.divisor) && money.divisor) {
+      return Number(money.amount) / Number(money.divisor);
+    }
+  }
+  return null;
+}
+
+function sourceTitleLooksRelated(product: Product) {
+  const sourceTitle = String(product.attribution_text || "").split(/\s+by\s+/i)[0] || "";
+  if (!sourceTitle || !product.source_url?.includes("makerworld.com")) return true;
+  const productWords = significantWords(product.name);
+  const sourceWords = significantWords(`${sourceTitle} ${product.source_url}`);
+  if (!productWords.length || !sourceWords.length) return true;
+  return productWords.some((word) => sourceWords.includes(word));
+}
+
+function significantWords(value: string) {
+  const stop = new Set(["and", "the", "with", "for", "style", "printed", "printz", "holder", "stand", "mount", "wall"]);
+  return value
+    .toLowerCase()
+    .replace(/\b(headset|headphone|headphones)\b/g, "audio")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length >= 3 && !stop.has(word));
+}
+
+function appendAuditNote(existing: string | null | undefined, note: string) {
+  const prior = String(existing || "").replace(/\n\nPRINTZ Etsy draft audit [\s\S]*$/i, "").trim();
+  return [prior, note].filter(Boolean).join("\n\n").slice(0, 4000);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function emptyResult(message: string, ok: boolean): EtsyDraftAutomationResult {
