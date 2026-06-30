@@ -11,3 +11,7 @@ end $$;
 
 create index if not exists products_sales_likelihood_score_idx
   on public.products(sales_likelihood_score desc, created_at desc);
+
+-- Supabase/PostgREST can keep a stale schema cache after DDL.
+-- This makes the new columns available to the app and service-role scripts sooner.
+notify pgrst, 'reload schema';

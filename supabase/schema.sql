@@ -26,6 +26,8 @@ create table if not exists public.products (
   etsy_listing_id bigint unique,
   etsy_state text,
   synced_from_etsy_at timestamptz,
+  sales_likelihood_score integer not null default 50 check (sales_likelihood_score between 1 and 100),
+  sales_likelihood_notes text,
   tags text[] default '{}',
   featured boolean not null default false,
   active boolean not null default true,
