@@ -51,8 +51,8 @@ const minSalesScore = Number(process.env.PRINTZ_MIN_SALES_SCORE || 70);
 const makerWorldPages = Number(process.env.PRINTZ_MAKERWORLD_SEARCH_PAGES || 5);
 const makerWorldPageSize = Number(process.env.PRINTZ_MAKERWORLD_SEARCH_LIMIT || 20);
 const riskPattern =
-  /\b(oral\s*-?b|oxo|festool|boveda|airtag|skadis|hanson|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox|weapon|gun|knife)\b/i;
-const awkwardTitlePattern = /\b(porta|guardanapos|saches|modified|commercial use|no supports?|print profile)\b/i;
+  /\b(oral\s*-?b|oxo|festool|boveda|airtag|skadis|hanson|juwel|totoro|aquatlantis|gardena|altoids|gaahleri|central\s*pneumatic|gorilla\s*glue|titebond|bison|bambulab|cricut|silhouette|stampin|iroshizuku|craft\s*smart|aqueon|seaoura|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox|weapon|gun|knife)\b/i;
+const awkwardTitlePattern = /\b(porta|guardanapos|saches|modified|commercial use|no supports?|print profile|rallenta|flusso|acquario|vaso|orchidee|anzuchttopf|pinsel|stiftehalter|prank)\b/i;
 const nonAsciiPattern = /[^\x00-\x7F]/;
 
 const queries = [
@@ -233,7 +233,7 @@ const extraQueries = (process.env.PRINTZ_EXTRA_MAKERWORLD_QUERIES || "")
   .split(/[\n,]+/)
   .map((query) => query.trim())
   .filter(Boolean);
-const searchQueries = Array.from(new Set([...queries, ...extraQueries]));
+const searchQueries = Array.from(new Set(process.env.PRINTZ_ONLY_EXTRA_QUERIES === "true" ? extraQueries : [...extraQueries, ...queries]));
 
 async function main() {
   const supabase = createSupabaseAdminClient();

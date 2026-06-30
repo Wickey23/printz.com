@@ -6,7 +6,7 @@ import type { Product } from "@/lib/types";
 const DEFAULT_PRODUCT_SHEET_ID = "14L2liBREJYQSO_rhaAon_1RXonZIah91y77f4T3ctXs";
 const DEFAULT_CHATS_SHEET = "chats list";
 const protectedTermPattern =
-  /\b(oral\s*-?b|oxo|festool|boveda|airtag|skadis|hanson|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox)\b/i;
+  /\b(oral\s*-?b|oxo|festool|boveda|airtag|skadis|hanson|juwel|totoro|aquatlantis|gardena|altoids|gaahleri|central\s*pneumatic|gorilla\s*glue|titebond|bison|bambulab|cricut|silhouette|stampin|iroshizuku|craft\s*smart|aqueon|seaoura|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox)\b/i;
 
 type SupabaseAdmin = SupabaseClient;
 
