@@ -7,7 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { Product, ProductMedia } from "@/lib/types";
 
 const protectedTermPattern =
-  /\b(oral\s*-?b|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox)\b/i;
+  /\b(oral\s*-?b|oxo|festool|boveda|airtag|skadis|hanson|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox)\b/i;
 
 export type EtsyDraftAutomationResult = {
   ok: boolean;

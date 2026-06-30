@@ -47,11 +47,12 @@ type LicenseInfo = {
 
 const target = Number(process.argv[2] || process.env.PRINTZ_BATCH_TARGET || 20);
 const minImages = Number(process.env.PRINTZ_MIN_ETSY_IMAGES || 5);
+const minSalesScore = Number(process.env.PRINTZ_MIN_SALES_SCORE || 70);
 const makerWorldPages = Number(process.env.PRINTZ_MAKERWORLD_SEARCH_PAGES || 5);
 const makerWorldPageSize = Number(process.env.PRINTZ_MAKERWORLD_SEARCH_LIMIT || 20);
 const riskPattern =
-  /\b(oral\s*-?b|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox|weapon|gun|knife)\b/i;
-const awkwardTitlePattern = /\b(porta|guardanapos|saches|modified|no supports?|print profile)\b/i;
+  /\b(oral\s*-?b|oxo|festool|boveda|airtag|skadis|hanson|milwaukee|ryobi|citadel|games\s*workshop|dewalt|makita|bosch|craftsman|stanley|dremel|samsung|galaxy|akg|lg|sony|scrub\s*daddy|dr\.?\s*squatch|softsoap|groot|vallejo|army\s*painter|toolgrid|multiboard|monster\s*energy|magsafe|nintendo|switch|xbox|playstation|ps5|ps4|mario|pokemon|disney|marvel|star\s*wars|lego|ikea|tesla|apple|iphone|ipad|airpods|dyson|nike|adidas|yeti|hydro\s*flask|gridfinity|barbie|hello\s*kitty|snoopy|minecraft|fortnite|roblox|weapon|gun|knife)\b/i;
+const awkwardTitlePattern = /\b(porta|guardanapos|saches|modified|commercial use|no supports?|print profile)\b/i;
 const nonAsciiPattern = /[^\x00-\x7F]/;
 
 const queries = [
@@ -321,6 +322,9 @@ async function createPublishReadyDraft({
     query,
     imageCount: source.images.length,
   });
+  if (sales.score < minSalesScore) {
+    return { ok: false, name, listingId: 0, imageCount: source.images.length, url: "", reason: `Sales score ${sales.score} below ${minSalesScore}.` };
+  }
   const payload = {
     name,
     slug,
