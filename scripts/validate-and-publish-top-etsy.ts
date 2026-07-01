@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "../src/lib/supabase/server";
 import { getValidEtsyOAuthToken, getEffectiveEtsyRuntimeSettings } from "../src/lib/etsy-auth";
+import { productToEtsyDraft } from "../src/lib/etsy-drafts";
 import { createOrSyncEtsyListing } from "../src/lib/etsy-listings";
 import { getEtsyReadiness } from "../src/lib/etsy-readiness";
 import type { Product, ProductMedia } from "../src/lib/types";
@@ -44,6 +45,7 @@ type EtsyListing = {
   shipping_profile_id?: number;
   taxonomy_id?: number;
   readiness_state_id?: number;
+  tags?: string[];
 };
 
 async function main() {
@@ -79,7 +81,7 @@ async function main() {
     const live = await fetchEtsyListing(apiKey, accessToken, sync.listingId);
     await delay(1000);
     const images = await fetchEtsyImageCount(apiKey, accessToken, sync.listingId);
-    const postErrors = postPublishErrors(live, images);
+    const postErrors = postPublishErrors(live, images, product, settings);
     results.push({
       rank,
       product: product.name,
@@ -148,9 +150,7 @@ async function validateProduct({
     const etsyImageCount = await fetchEtsyImageCount(apiKey, accessToken, product.etsy_listing_id);
     if (!["draft", "inactive", "active"].includes(String(live.state || ""))) errors.push(`Etsy listing state is ${live.state || "unknown"}, not draft/inactive/active.`);
     if (etsyImageCount < 5) errors.push(`Etsy listing has only ${etsyImageCount} images.`);
-    if (!String(live.description || "").toLowerCase().includes("source and license")) errors.push("Etsy description is missing Source and license section.");
-    if (!String(live.description || "").toLowerCase().includes("attribution")) errors.push("Etsy description is missing attribution wording.");
-    if (!String(live.description || "").includes(product.source_url || "")) errors.push("Etsy description does not include the product source URL.");
+    errors.push(...liveListingContentErrors(live, product, settings));
     if (Number(live.taxonomy_id || 0) !== Number(settings.taxonomyId)) errors.push(`Etsy taxonomy ${live.taxonomy_id || "missing"} does not match ${settings.taxonomyId}.`);
     if (Number(live.shipping_profile_id || 0) !== Number(settings.shippingProfileId)) errors.push(`Etsy shipping profile ${live.shipping_profile_id || "missing"} does not match ${settings.shippingProfileId}.`);
   }
@@ -173,11 +173,73 @@ async function updatePublishedProduct(supabase: NonNullable<ReturnType<typeof cr
   if (error) throw error;
 }
 
-function postPublishErrors(listing: EtsyListing, imageCount: number) {
+function postPublishErrors(
+  listing: EtsyListing,
+  imageCount: number,
+  product: Product,
+  settings: Awaited<ReturnType<typeof getEffectiveEtsyRuntimeSettings>>,
+) {
   const errors: string[] = [];
   if (listing.state !== "active") errors.push(`Post-publish Etsy state is ${listing.state || "unknown"}.`);
   if (imageCount < 5) errors.push(`Post-publish Etsy image count is ${imageCount}.`);
+  errors.push(...liveListingContentErrors(listing, product, settings));
+  if (Number(listing.taxonomy_id || 0) !== Number(settings.taxonomyId)) errors.push(`Post-publish Etsy taxonomy is ${listing.taxonomy_id || "missing"}.`);
+  if (Number(listing.shipping_profile_id || 0) !== Number(settings.shippingProfileId)) errors.push(`Post-publish Etsy shipping profile is ${listing.shipping_profile_id || "missing"}.`);
+  if (Number(listing.readiness_state_id || 0) !== Number(settings.readinessStateId)) errors.push(`Post-publish Etsy readiness state is ${listing.readiness_state_id || "missing"}.`);
   return errors;
+}
+
+function liveListingContentErrors(
+  listing: EtsyListing,
+  product: Product,
+  settings: Awaited<ReturnType<typeof getEffectiveEtsyRuntimeSettings>>,
+) {
+  const errors: string[] = [];
+  const expected = productToEtsyDraft(product, settings.taxonomyId);
+  const expectedTitle = expected.body.get("title") || "";
+  const expectedDescription = expected.body.get("description") || "";
+  const expectedTags = (expected.body.get("tags") || "").split(",").filter(Boolean);
+  const liveDescription = String(listing.description || "");
+  const normalizedLiveDescription = normalizeText(liveDescription);
+  const normalizedExpectedDescription = normalizeText(expectedDescription);
+
+  if (String(listing.title || "") !== expectedTitle) errors.push("Etsy title does not match the PRINTZ-generated title.");
+  if (expectedTitle.length > 140) errors.push(`Generated Etsy title is too long: ${expectedTitle.length}/140.`);
+  if (expectedTitle.length < 30) errors.push(`Generated Etsy title is very short: ${expectedTitle.length} characters.`);
+
+  if (normalizedLiveDescription !== normalizedExpectedDescription) errors.push("Etsy description does not match the PRINTZ-generated description.");
+  if (liveDescription.length < 900) errors.push(`Etsy description is too thin: ${liveDescription.length} characters.`);
+  for (const section of ["Details:", "Materials:", "Dimensions:", "Processing time:", "Care:", "Notes:", "Source and license:"]) {
+    if (!liveDescription.includes(section)) errors.push(`Etsy description is missing ${section}`);
+  }
+  for (const sourceField of ["Model:", "Creator:", "Platform: MakerWorld", "Source:", "License:", "Changes / use:", "Attribution notice:"]) {
+    if (!liveDescription.includes(sourceField)) errors.push(`Etsy source attribution is missing ${sourceField}`);
+  }
+  if (product.source_url && !liveDescription.includes(product.source_url)) errors.push("Etsy description does not include the exact MakerWorld source URL.");
+  if (product.creator_name && !liveDescription.toLowerCase().includes(product.creator_name.toLowerCase())) errors.push("Etsy description does not include the MakerWorld creator name.");
+  if (product.license_type && !liveDescription.toLowerCase().includes(product.license_type.toLowerCase())) errors.push("Etsy description does not include the source license type.");
+
+  const livePrice = typeof listing.price === "object" && listing.price
+    ? Number(listing.price.amount || 0) / Number(listing.price.divisor || 1)
+    : Number(listing.price || 0);
+  const expectedPrice = Number(product.price || 9.99);
+  if (Math.abs(livePrice - expectedPrice) > 0.01) errors.push(`Etsy price ${livePrice.toFixed(2)} does not match PRINTZ price ${expectedPrice.toFixed(2)}.`);
+
+  const liveTags = (listing.tags || []).map((tag) => tag.toLowerCase());
+  for (const tag of expectedTags) {
+    if (!liveTags.includes(tag)) errors.push(`Etsy tags are missing ${tag}.`);
+  }
+  for (const internalTag of [batchTag, "first-publish-batch-2026-06-30", adsTag]) {
+    if (liveTags.includes(internalTag)) errors.push(`Internal admin tag leaked to Etsy: ${internalTag}.`);
+  }
+  if (liveTags.length < 8) errors.push(`Etsy has only ${liveTags.length} tags.`);
+  if (liveTags.some((tag) => tag.length > 20)) errors.push("Etsy has a tag longer than 20 characters.");
+
+  return errors;
+}
+
+function normalizeText(value: string) {
+  return value.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 async function productMedia(supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, productId: string) {
