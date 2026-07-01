@@ -3,10 +3,9 @@
 import { headers } from "next/headers";
 import type { ActionState } from "@/app/actions";
 import { isApprovedAdmin } from "@/lib/auth";
+import { getConfiguredSiteUrl, isLocalUrl, trimTrailingSlash } from "@/lib/site-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { textFromForm } from "@/lib/utils";
-
-const fallbackSiteUrl = "https://printzcom.vercel.app";
 
 const success = (message: string): ActionState => ({ ok: true, message });
 const failure = (message: string): ActionState => ({ ok: false, message });
@@ -30,17 +29,13 @@ export async function requestAdminPasswordReset(_: ActionState, formData: FormDa
 }
 
 async function getSiteUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (configuredUrl && !configuredUrl.includes("localhost")) return trimTrailingSlash(configuredUrl);
+  const configuredUrl = getConfiguredSiteUrl();
+  if (!isLocalUrl(configuredUrl)) return configuredUrl;
 
   const headersList = await headers();
   const host = headersList.get("x-forwarded-host") || headersList.get("host");
-  if (!host || host.includes("localhost") || host.includes("127.0.0.1")) return fallbackSiteUrl;
+  if (!host || isLocalUrl(host)) return configuredUrl;
 
   const protocol = headersList.get("x-forwarded-proto") || "https";
-  return `${protocol}://${host}`;
-}
-
-function trimTrailingSlash(value: string) {
-  return value.replace(/\/$/, "");
+  return trimTrailingSlash(`${protocol}://${host}`);
 }

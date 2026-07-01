@@ -4,6 +4,7 @@ import { AdminAssistant } from "@/components/admin-assistant";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { siteConfig } from "@/lib/config";
+import { getConfiguredSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  metadataBase: new URL(getConfiguredSiteUrl()),
   title: {
     default: siteConfig.name,
     template: `%s | ${siteConfig.name}`,
