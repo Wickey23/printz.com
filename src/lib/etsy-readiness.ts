@@ -22,7 +22,7 @@ export type EtsyReadinessSummary = {
 export function getEtsyReadiness(product: Product, options: { imageCount?: number } = {}): EtsyReadinessSummary {
   const productType = isDigitalProduct(product) ? "Digital" : "Physical";
   const imageCount = options.imageCount ?? (product.main_image_url ? 1 : 0);
-  const tags = product.tags || [];
+  const tags = publicEtsyTags(product.tags || []);
   const hasRightsNotes = Boolean(product.license_notes?.trim() || product.rights_status?.trim() || product.source_url?.trim());
   const hasVariants = Boolean(product.color_options?.length || product.size_options?.length || product.finish_options?.length);
 
@@ -142,6 +142,11 @@ export function getEtsyReadiness(product: Product, options: { imageCount?: numbe
     recommendedMissing,
     items,
   };
+}
+
+function publicEtsyTags(tags: string[]) {
+  const internalTags = new Set(["first-publish-batch", "first-publish-batch-2026-06-30", "etsy-ads-test"]);
+  return tags.filter((tag) => !internalTags.has(tag));
 }
 
 export function etsyReadinessLabel(summary: EtsyReadinessSummary) {

@@ -172,8 +172,9 @@ ${sourceSection ? `\nSource and license:\n${sourceSection}` : ""}`.slice(0, 1300
 }
 
 function etsyTags(product: Product) {
+  const internalTags = new Set(["first-publish-batch", "first-publish-batch-2026-06-30", "etsy-ads-test"]);
   const base = [
-    ...(product.tags || []),
+    ...(product.tags || []).filter((tag) => !internalTags.has(tag)),
     product.category,
     isDigitalProduct(product) ? "digital download" : "3d printed",
     "printz by khan",
