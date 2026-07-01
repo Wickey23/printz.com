@@ -8,6 +8,7 @@ export type EtsyDraftInput = {
   taxonomyId: string;
   shippingProfileId?: string;
   readinessStateId?: string;
+  returnPolicyId?: string;
   product: Product;
 };
 
@@ -57,6 +58,7 @@ export async function createEtsyDraftFromProduct({
   taxonomyId,
   shippingProfileId,
   readinessStateId,
+  returnPolicyId,
   product,
 }: EtsyDraftInput): Promise<EtsyDraftResult> {
   const { body, isDigital } = productToEtsyDraft(product, taxonomyId);
@@ -68,8 +70,12 @@ export async function createEtsyDraftFromProduct({
     if (!readinessStateId) {
       throw new Error("ETSY_READINESS_STATE_ID is required to create physical Etsy draft listings.");
     }
+    if (!returnPolicyId) {
+      throw new Error("ETSY_RETURN_POLICY_ID is required to create physical Etsy draft listings.");
+    }
     body.set("shipping_profile_id", shippingProfileId);
     body.set("readiness_state_id", readinessStateId);
+    body.set("return_policy_id", returnPolicyId);
   }
 
   const response = await fetch(`https://api.etsy.com/v3/application/shops/${shopId}/listings`, {
@@ -112,6 +118,7 @@ export function etsyDraftRequirements(
 
   if (!isDigital && !process.env.ETSY_SHIPPING_PROFILE_ID && !settings?.shippingProfileId) missing.push("ETSY_SHIPPING_PROFILE_ID");
   if (!isDigital && !process.env.ETSY_READINESS_STATE_ID && !settings?.readinessStateId) missing.push("ETSY_READINESS_STATE_ID");
+  if (!isDigital && !process.env.ETSY_RETURN_POLICY_ID && !settings?.returnPolicyId) missing.push("ETSY_RETURN_POLICY_ID");
 
   return missing;
 }

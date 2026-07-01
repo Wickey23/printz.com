@@ -21,6 +21,7 @@ export type EtsyRuntimeSettings = {
   taxonomyId: string;
   shippingProfileId: string;
   readinessStateId: string;
+  returnPolicyId: string;
 };
 
 export function etsyKeystring() {
@@ -135,6 +136,7 @@ export async function getEffectiveEtsyRuntimeSettings() {
     taxonomyId: process.env.ETSY_DEFAULT_TAXONOMY_ID || saved.taxonomyId,
     shippingProfileId: process.env.ETSY_SHIPPING_PROFILE_ID || saved.shippingProfileId,
     readinessStateId: process.env.ETSY_READINESS_STATE_ID || saved.readinessStateId,
+    returnPolicyId: process.env.ETSY_RETURN_POLICY_ID || saved.returnPolicyId,
   });
 }
 
@@ -144,6 +146,7 @@ function normalizeEtsyRuntimeSettings(settings: Partial<EtsyRuntimeSettings>) {
     taxonomyId: cleanId(settings.taxonomyId),
     shippingProfileId: cleanId(settings.shippingProfileId),
     readinessStateId: cleanId(settings.readinessStateId),
+    returnPolicyId: cleanId(settings.returnPolicyId),
   };
 }
 

@@ -16,6 +16,7 @@ export default async function EtsyControlCenterPage() {
       taxonomyId: "",
       shippingProfileId: "",
       readinessStateId: "",
+      returnPolicyId: "",
     })),
   ]);
   const hasOAuthToken = Boolean(etsyToken?.access_token);
@@ -74,7 +75,7 @@ export default async function EtsyControlCenterPage() {
           <div className="mt-5 rounded-md border border-amber-300/20 bg-amber-300/10 p-4 text-sm leading-6 text-zinc-200">
             <p className="font-black text-amber-100">Draft creation status</p>
             <p className="mt-2">
-              OAuth is {hasOAuthToken ? "connected" : "not connected"}. Draft creation also needs shop ID, taxonomy ID, shipping profile ID, and readiness state ID configured in the environment or saved settings.
+              OAuth is {hasOAuthToken ? "connected" : "not connected"}. Draft creation also needs shop ID, taxonomy ID, shipping profile ID, readiness state ID, and return policy ID configured in the environment or saved settings.
             </p>
           </div>
         </section>
@@ -129,7 +130,7 @@ function ApiStep({ done, label }: { done?: boolean; label: string }) {
   );
 }
 
-function etsySetupItems(hasOAuthToken: boolean, settings: { shopId: string; taxonomyId: string; shippingProfileId: string; readinessStateId: string }) {
+function etsySetupItems(hasOAuthToken: boolean, settings: { shopId: string; taxonomyId: string; shippingProfileId: string; readinessStateId: string; returnPolicyId: string }) {
   return [
     { key: "ETSY_API_KEY", label: "API keystring + shared secret", ok: Boolean(process.env.ETSY_API_KEY) },
     { key: "ETSY_ACCESS_TOKEN", label: "Connected Etsy OAuth with listing, shop, and order scopes", ok: Boolean(process.env.ETSY_ACCESS_TOKEN) || hasOAuthToken },
@@ -137,6 +138,7 @@ function etsySetupItems(hasOAuthToken: boolean, settings: { shopId: string; taxo
     { key: "ETSY_DEFAULT_TAXONOMY_ID", label: "Default taxonomy ID", ok: Boolean(settings.taxonomyId) },
     { key: "ETSY_SHIPPING_PROFILE_ID", label: "Shipping profile ID for physical items", ok: Boolean(settings.shippingProfileId) },
     { key: "ETSY_READINESS_STATE_ID", label: "Readiness state ID for physical items", ok: Boolean(settings.readinessStateId) },
+    { key: "ETSY_RETURN_POLICY_ID", label: "Return policy ID for active physical items", ok: Boolean(settings.returnPolicyId) },
   ];
 }
 

@@ -55,6 +55,7 @@ async function createDraft(apiKey: string, accessToken: string, settings: EtsyRu
     taxonomyId: settings.taxonomyId,
     shippingProfileId: settings.shippingProfileId,
     readinessStateId: settings.readinessStateId,
+    returnPolicyId: settings.returnPolicyId,
     product,
   });
 }
@@ -80,6 +81,7 @@ async function updateListing({
   if (!isDigital) {
     if (settings.shippingProfileId) body.set("shipping_profile_id", settings.shippingProfileId);
     if (settings.readinessStateId) body.set("readiness_state_id", settings.readinessStateId);
+    if (settings.returnPolicyId) body.set("return_policy_id", settings.returnPolicyId);
   }
   if (publish) body.set("state", "active");
 

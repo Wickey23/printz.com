@@ -20,7 +20,7 @@ export async function GET() {
   }
 
   try {
-    const [me, shippingProfiles, readinessStates] = await Promise.all([
+    const [me, shippingProfiles, readinessStates, returnPolicies] = await Promise.all([
       etsyJson<{ user_id?: number; shop_id?: number }>(new URL("https://api.etsy.com/v3/application/users/me"), etsyToken.access_token),
       etsyJson<{ results?: Array<{ shipping_profile_id?: number; title?: string }> }>(
         new URL(`https://api.etsy.com/v3/application/shops/${shopId}/shipping-profiles`),
@@ -28,6 +28,10 @@ export async function GET() {
       ),
       etsyJson<{ results?: Array<{ readiness_state_id?: number; readiness_state?: string; name?: string }> }>(
         new URL(`https://api.etsy.com/v3/application/shops/${shopId}/readiness-state-definitions`),
+        etsyToken.access_token,
+      ),
+      etsyJson<{ results?: Array<{ return_policy_id?: number; accepts_returns?: boolean; accepts_exchanges?: boolean; return_deadline?: number }> }>(
+        new URL(`https://api.etsy.com/v3/application/shops/${shopId}/policies/return`),
         etsyToken.access_token,
       ),
     ]);
@@ -44,6 +48,10 @@ export async function GET() {
       readinessStates: (readinessStates.results || []).map((state) => ({
         id: String(state.readiness_state_id || ""),
         title: state.readiness_state || state.name || "",
+      })),
+      returnPolicies: (returnPolicies.results || []).map((policy) => ({
+        id: String(policy.return_policy_id || ""),
+        title: `${policy.accepts_returns ? "Returns" : "No returns"}, ${policy.accepts_exchanges ? "exchanges" : "no exchanges"}${policy.return_deadline ? `, ${policy.return_deadline} days` : ""}`,
       })),
     });
   } catch (error) {

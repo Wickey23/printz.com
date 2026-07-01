@@ -45,6 +45,7 @@ type EtsyListing = {
   shipping_profile_id?: number;
   taxonomy_id?: number;
   readiness_state_id?: number;
+  return_policy_id?: number;
   tags?: string[];
 };
 
@@ -60,6 +61,9 @@ async function main() {
   if (!settings.shopId || !settings.taxonomyId || !settings.shippingProfileId || !settings.readinessStateId) {
     throw new Error("Etsy shop, taxonomy, shipping profile, and readiness IDs are required.");
   }
+  if (!settings.returnPolicyId) {
+    throw new Error("Etsy return policy ID is required for active physical listings.");
+  }
 
   const products = await loadBatchProducts(supabase);
   const selected = products.slice(0, targetCount);
@@ -69,7 +73,7 @@ async function main() {
   for (const { product, rank } of selected) {
     await delay(1500);
     const media = await productMedia(supabase, product.id);
-    const validation = await validateProduct({ apiKey, accessToken, media, product, rank, settings });
+    const validation = await validateProduct({ apiKey, accessToken, media, product, rank });
     if (!validation.ok) {
       results.push({ rank, product: product.name, published: false, errors: validation.errors });
       continue;
@@ -114,14 +118,12 @@ async function validateProduct({
   media,
   product,
   rank,
-  settings,
 }: {
   apiKey: string;
   accessToken: string;
   media: ProductMedia[];
   product: Product;
   rank: number;
-  settings: Awaited<ReturnType<typeof getEffectiveEtsyRuntimeSettings>>;
 }) {
   const errors: string[] = [];
   const imageCount = imageCountFor(product, media);
@@ -150,9 +152,6 @@ async function validateProduct({
     const etsyImageCount = await fetchEtsyImageCount(apiKey, accessToken, product.etsy_listing_id);
     if (!["draft", "inactive", "active"].includes(String(live.state || ""))) errors.push(`Etsy listing state is ${live.state || "unknown"}, not draft/inactive/active.`);
     if (etsyImageCount < 5) errors.push(`Etsy listing has only ${etsyImageCount} images.`);
-    errors.push(...liveListingContentErrors(live, product, settings));
-    if (Number(live.taxonomy_id || 0) !== Number(settings.taxonomyId)) errors.push(`Etsy taxonomy ${live.taxonomy_id || "missing"} does not match ${settings.taxonomyId}.`);
-    if (Number(live.shipping_profile_id || 0) !== Number(settings.shippingProfileId)) errors.push(`Etsy shipping profile ${live.shipping_profile_id || "missing"} does not match ${settings.shippingProfileId}.`);
   }
 
   return { ok: errors.length === 0, errors };
@@ -186,6 +185,7 @@ function postPublishErrors(
   if (Number(listing.taxonomy_id || 0) !== Number(settings.taxonomyId)) errors.push(`Post-publish Etsy taxonomy is ${listing.taxonomy_id || "missing"}.`);
   if (Number(listing.shipping_profile_id || 0) !== Number(settings.shippingProfileId)) errors.push(`Post-publish Etsy shipping profile is ${listing.shipping_profile_id || "missing"}.`);
   if (Number(listing.readiness_state_id || 0) !== Number(settings.readinessStateId)) errors.push(`Post-publish Etsy readiness state is ${listing.readiness_state_id || "missing"}.`);
+  if (Number(listing.return_policy_id || 0) !== Number(settings.returnPolicyId)) errors.push(`Post-publish Etsy return policy is ${listing.return_policy_id || "missing"}.`);
   return errors;
 }
 

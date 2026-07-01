@@ -21,6 +21,13 @@ type EtsyReadinessState = {
   name?: string;
 };
 
+type EtsyReturnPolicy = {
+  return_policy_id?: number;
+  accepts_returns?: boolean;
+  accepts_exchanges?: boolean;
+  return_deadline?: number;
+};
+
 type EtsyTaxonomyNode = {
   id?: number;
   name?: string;
@@ -32,6 +39,7 @@ export type EtsyDiscoveryResult = {
   taxonomyId: string;
   shippingProfileId: string;
   readinessStateId: string;
+  returnPolicyId: string;
   notes: string[];
 };
 
@@ -42,13 +50,17 @@ export async function discoverEtsyRuntimeIds({ accessToken, shopName = "printzby
 
   const notes: string[] = [];
   const shopId = await resolveShopId({ apiKey, accessToken, shopName });
-  const [shippingProfileId, readinessStateId, taxonomyId] = await Promise.all([
+  const [shippingProfileId, readinessStateId, returnPolicyId, taxonomyId] = await Promise.all([
     resolveShippingProfileId({ apiKey, accessToken, shopId }).catch((error) => {
       notes.push(error instanceof Error ? error.message : "Could not load shipping profiles.");
       return "";
     }),
     resolveReadinessStateId({ apiKey, accessToken, shopId }).catch((error) => {
       notes.push(error instanceof Error ? error.message : "Could not load readiness states.");
+      return "";
+    }),
+    resolveReturnPolicyId({ apiKey, accessToken, shopId }).catch((error) => {
+      notes.push(error instanceof Error ? error.message : "Could not load return policies.");
       return "";
     }),
     resolveTaxonomyId({ apiKey }).catch((error) => {
@@ -62,6 +74,7 @@ export async function discoverEtsyRuntimeIds({ accessToken, shopName = "printzby
     taxonomyId,
     shippingProfileId,
     readinessStateId,
+    returnPolicyId,
     notes,
   } satisfies EtsyDiscoveryResult;
 }
@@ -112,6 +125,17 @@ async function resolveReadinessStateId({ apiKey, accessToken, shopId }: { apiKey
     payload.results?.[0];
   if (!madeToOrder?.readiness_state_id) throw new Error("No Etsy processing/readiness profiles found. Create one in Etsy first.");
   return String(madeToOrder.readiness_state_id);
+}
+
+async function resolveReturnPolicyId({ apiKey, accessToken, shopId }: { apiKey: string; accessToken: string; shopId: string }) {
+  const url = new URL(`https://api.etsy.com/v3/application/shops/${shopId}/policies/return`);
+  const payload = await etsyJson<{ results?: EtsyReturnPolicy[] }>(url, { apiKey, accessToken });
+  const policy =
+    payload.results?.find((item) => item.accepts_returns && item.accepts_exchanges) ||
+    payload.results?.find((item) => item.accepts_returns) ||
+    payload.results?.[0];
+  if (!policy?.return_policy_id) throw new Error("No Etsy return policies found. Create one in Etsy first.");
+  return String(policy.return_policy_id);
 }
 
 async function resolveTaxonomyId({ apiKey }: { apiKey: string }) {

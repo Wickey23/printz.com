@@ -1160,6 +1160,7 @@ export async function saveEtsyRuntimeSettings(state: ActionState, formData: Form
     taxonomyId: textFromForm(formData, "taxonomy_id"),
     shippingProfileId: optionalTextFromForm(formData, "shipping_profile_id") || "",
     readinessStateId: optionalTextFromForm(formData, "readiness_state_id") || "",
+    returnPolicyId: optionalTextFromForm(formData, "return_policy_id") || "",
   };
 
   if (!settings.shopId || !settings.taxonomyId) {

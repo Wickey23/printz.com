@@ -9,6 +9,7 @@ type EtsySettings = {
   taxonomyId: string;
   shippingProfileId: string;
   readinessStateId: string;
+  returnPolicyId: string;
 };
 
 type SettingsPayload = {
@@ -17,6 +18,7 @@ type SettingsPayload = {
   settings?: Partial<EtsySettings>;
   shippingProfiles?: Array<{ id: string; title: string }>;
   readinessStates?: Array<{ id: string; title: string }>;
+  returnPolicies?: Array<{ id: string; title: string }>;
 };
 
 export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
@@ -88,9 +90,10 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
         taxonomyId: payload.settings?.taxonomyId || current.taxonomyId,
         shippingProfileId: payload.settings?.shippingProfileId || current.shippingProfileId,
         readinessStateId: payload.settings?.readinessStateId || current.readinessStateId,
+        returnPolicyId: payload.settings?.returnPolicyId || current.returnPolicyId,
       }));
     }
-    if (payload.shippingProfiles || payload.readinessStates) {
+    if (payload.shippingProfiles || payload.readinessStates || payload.returnPolicies) {
       setTestResult(payload);
     }
     setOk(Boolean(payload.ok));
@@ -151,6 +154,12 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
           value={form.readinessStateId}
           onChange={(value) => setForm((current) => ({ ...current, readinessStateId: value }))}
         />
+        <IdField
+          helperText="Required by Etsy for active physical listings. Auto-detect reads your shop return policies."
+          label="Return policy ID"
+          value={form.returnPolicyId}
+          onChange={(value) => setForm((current) => ({ ...current, returnPolicyId: value }))}
+        />
       </div>
       <button
         className="mt-4 inline-flex h-10 items-center rounded-md bg-amber-300 px-4 text-sm font-black text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
@@ -160,7 +169,7 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
       >
         {pending ? "Saving..." : "Save Etsy IDs"}
       </button>
-      {testResult?.shippingProfiles?.length || testResult?.readinessStates?.length ? (
+      {testResult?.shippingProfiles?.length || testResult?.readinessStates?.length || testResult?.returnPolicies?.length ? (
         <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-zinc-900 px-3 py-2 text-xs leading-5 text-zinc-400">
           {testResult.shippingProfiles?.length ? (
             <p>
@@ -170,6 +179,11 @@ export function EtsySettingsPanel({ settings }: { settings: EtsySettings }) {
           {testResult.readinessStates?.length ? (
             <p>
               Readiness states: {testResult.readinessStates.map((state) => `${state.title || state.id} (${state.id})`).join(", ")}
+            </p>
+          ) : null}
+          {testResult.returnPolicies?.length ? (
+            <p>
+              Return policies: {testResult.returnPolicies.map((policy) => `${policy.title || policy.id} (${policy.id})`).join(", ")}
             </p>
           ) : null}
         </div>

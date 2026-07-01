@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     taxonomyId: clean(body.taxonomyId),
     shippingProfileId: clean(body.shippingProfileId),
     readinessStateId: clean(body.readinessStateId),
+    returnPolicyId: clean(body.returnPolicyId),
   };
 
   if (!settings.shopId || !settings.taxonomyId) {
@@ -48,6 +49,7 @@ export async function PUT() {
       taxonomyId: settings.taxonomyId || saved.taxonomyId,
       shippingProfileId: settings.shippingProfileId || saved.shippingProfileId,
       readinessStateId: settings.readinessStateId || saved.readinessStateId,
+      returnPolicyId: settings.returnPolicyId || saved.returnPolicyId,
     };
     await setEtsyRuntimeSettings(mergedSettings);
 
