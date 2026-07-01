@@ -44,7 +44,13 @@ const firstBatchAvoidTerms = [
   "18650",
   "ant ",
   "bathroom gadgets",
+  "beer battery",
   "breakout board",
+  "booktok",
+  "boho",
+  "bowl",
+  "cat pen",
+  "coin cell",
   "digestion",
   "fastener",
   "fish feeder",
@@ -55,6 +61,8 @@ const firstBatchAvoidTerms = [
   "laboratory",
   "medical",
   "medicine",
+  "motorcycle",
+  "oil filter",
   "model paint",
   "pill",
   "ptfe",
@@ -145,9 +153,8 @@ function toCandidate(product: Product, media: ProductMedia[]): Candidate | null 
   if (!cluster) return null;
 
   const computed = salesLikelihood({ ...product, imageCount });
-  const storedScore = product.sales_likelihood_score || computed.score;
   const practicalBonus = cluster === "craft" || cluster === "home" ? 5 : 0;
-  const score = Math.min(100, storedScore + practicalBonus);
+  const score = Math.min(100, computed.score + practicalBonus);
   if (score < 88) return null;
 
   return {

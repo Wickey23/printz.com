@@ -218,7 +218,13 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 function sortAdminProducts(products: Awaited<ReturnType<typeof getAllProductsForAdmin>>, sort: string, mediaByProductId: Record<string, ProductMedia[]>) {
   const copy = [...products];
   if (sort === "sell-score") {
-    return copy.sort((a, b) => productSales(b, mediaByProductId[b.id] || []).score - productSales(a, mediaByProductId[a.id] || []).score || String(b.created_at).localeCompare(String(a.created_at)));
+    return copy.sort(
+      (a, b) =>
+        Number(b.tags?.includes("first-publish-batch") || false) - Number(a.tags?.includes("first-publish-batch") || false) ||
+        Number(b.active) - Number(a.active) ||
+        productSales(b, mediaByProductId[b.id] || []).score - productSales(a, mediaByProductId[a.id] || []).score ||
+        String(b.created_at).localeCompare(String(a.created_at)),
+    );
   }
   if (sort === "needs-review") {
     return copy.sort((a, b) => Number(a.workflow_status !== "Needs Review") - Number(b.workflow_status !== "Needs Review") || String(b.created_at).localeCompare(String(a.created_at)));

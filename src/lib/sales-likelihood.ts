@@ -1,6 +1,9 @@
 import type { Product } from "@/lib/types";
 
 type SalesLikelihoodInput = Pick<Product, "name" | "category" | "price" | "tags" | "source_url" | "license_type" | "commercial_sale_allowed" | "media_status" | "rights_status"> & {
+  active?: boolean | null;
+  short_description?: string | null;
+  full_description?: string | null;
   query?: string;
   imageCount?: number;
 };
@@ -70,6 +73,42 @@ const nicheWorkflowTerms = [
   "test tube",
 ];
 
+const riskyOrLowConsumerTerms = [
+  "bathroom gadgets",
+  "breakout board",
+  "commercial use",
+  "digestion",
+  "fastener",
+  "half clamp",
+  "hose clamp",
+  "ipamorelin",
+  "laboratory",
+  "lab ",
+  "medical",
+  "medicine",
+  "mooncat",
+  "m3",
+  "peptide",
+  "pill",
+  "pipe & tube",
+  "poop",
+  "ptfe",
+  "quick drying stand for tools",
+  "stethoscope",
+  "test tube",
+  "tube rack",
+  "vial",
+];
+
+const categorySignals: Record<string, string[]> = {
+  Bathroom: ["soap", "toothbrush", "toothpaste", "makeup", "bathroom", "toilet"],
+  Kitchen: ["kitchen", "spoon", "cutting board", "chopping board", "mason jar", "tea", "spice", "egg", "fridge"],
+  Jewelry: ["earring", "jewelry", "enamel pin", "ring", "necklace", "bracelet"],
+  Planters: ["plant", "planter", "seedling", "greenhouse", "rooting", "hydroponic", "garden"],
+  Workshop: ["pegboard", "clamp", "screw", "hex bit", "bolt", "tool drawer", "sandpaper"],
+  "Tech Accessories": ["cable", "sd card", "headphone", "phone", "tablet", "remote", "grommet"],
+};
+
 const weakGenericTerms = [
   "decor",
   "toy",
@@ -115,10 +154,17 @@ const strongCategories = ["Desk Accessories", "Kitchen", "Bathroom", "Workshop",
 const giftTerms = ["personalized", "custom", "gift", "name", "desk", "plant", "jewelry", "pet", "teacher"];
 
 export function salesLikelihood(product: SalesLikelihoodInput) {
-  const text = [product.name, product.category, product.query, ...(product.tags || [])].join(" ").toLowerCase();
+  const text = [product.name, product.category, product.short_description, product.full_description, product.query, ...(product.tags || [])].join(" ").toLowerCase();
   const imageCount = product.imageCount || 0;
   let score = 45;
+  let maxScore = 100;
   const reasons: string[] = [];
+
+  if (product.active === false) {
+    score -= 28;
+    maxScore = Math.min(maxScore, 69);
+    reasons.push("Inactive products are not treated as launch-ready until manually reactivated.");
+  }
 
   const utilityHits = highIntentTerms.filter((term) => text.includes(term));
   if (utilityHits.length) {
@@ -141,6 +187,13 @@ export function salesLikelihood(product: SalesLikelihoodInput) {
   if (strongCategories.includes(product.category)) {
     score += 12;
     reasons.push(`${product.category} is a strong Etsy category for functional 3D prints.`);
+  }
+
+  const inferredCategory = inferredCategoryFor(text);
+  if (inferredCategory && inferredCategory !== product.category) {
+    score -= 22;
+    maxScore = Math.min(maxScore, 78);
+    reasons.push(`Category appears mismatched: content reads like ${inferredCategory}, not ${product.category}.`);
   }
 
   const giftHits = giftTerms.filter((term) => text.includes(term));
@@ -197,15 +250,24 @@ export function salesLikelihood(product: SalesLikelihoodInput) {
   const brandRiskHits = brandRiskTerms.filter((term) => text.includes(term));
   if (brandRiskHits.length) {
     score -= 35;
+    maxScore = Math.min(maxScore, 60);
     reasons.push(`Brand/IP review needed before publishing or advertising: ${brandRiskHits.slice(0, 3).join(", ")}.`);
+  }
+
+  const lowConsumerHits = riskyOrLowConsumerTerms.filter((term) => text.includes(term));
+  if (lowConsumerHits.length) {
+    score -= 30;
+    maxScore = Math.min(maxScore, 84);
+    reasons.push(`Not a first-batch consumer listing without review: ${lowConsumerHits.slice(0, 4).join(", ")}.`);
   }
 
   if (product.rights_status === "Needs Review" || product.media_status === "Needs Review") {
     score -= 30;
+    maxScore = Math.min(maxScore, 65);
     reasons.push("Held back because rights or media still need review.");
   }
 
-  const finalScore = Math.max(1, Math.min(100, Math.round(score)));
+  const finalScore = Math.max(1, Math.min(maxScore, Math.round(score)));
   const band = finalScore >= 85 ? "High" : finalScore >= 70 ? "Good" : finalScore >= 55 ? "Medium" : "Low";
   const adGuidance =
     finalScore >= 90
@@ -220,4 +282,17 @@ export function salesLikelihood(product: SalesLikelihoodInput) {
     score: finalScore,
     notes: `${band} sell-likelihood (${finalScore}/100). ${reasons.join(" ")} ${adGuidance}`.slice(0, 1800),
   };
+}
+
+function inferredCategoryFor(text: string) {
+  let best = "";
+  let bestCount = 0;
+  for (const [category, signals] of Object.entries(categorySignals)) {
+    const count = signals.filter((signal) => text.includes(signal)).length;
+    if (count > bestCount) {
+      best = category;
+      bestCount = count;
+    }
+  }
+  return bestCount ? best : "";
 }
