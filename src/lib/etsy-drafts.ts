@@ -140,8 +140,22 @@ function isDigitalProduct(product: Product) {
 }
 
 function etsyTitle(product: Product) {
-  const suffix = isDigitalProduct(product) ? "Printable Digital Download" : "3D Printed Gift";
+  const suffix = isDigitalProduct(product) ? "Printable Digital Download" : physicalTitleSuffix(product);
   return `${buyerSafeTitle(product.name)} - ${suffix}, PRINTZ By Khan`.slice(0, 140);
+}
+
+function physicalTitleSuffix(product: Product) {
+  const text = [product.name, product.category, product.short_description, ...(product.tags || [])].join(" ").toLowerCase();
+  if (text.includes("aquarium")) return "3D Printed Aquarium Plant Holder";
+  if (text.includes("plant") || text.includes("planter")) return "3D Printed Plant Organizer";
+  if (text.includes("paint") || text.includes("brush") || text.includes("marker")) return "3D Printed Art Supply Organizer";
+  if (text.includes("earring") || text.includes("jewelry")) return "3D Printed Jewelry Display";
+  if (text.includes("battery")) return "3D Printed Battery Storage Organizer";
+  if (text.includes("usb") || text.includes("sd card") || text.includes("cable") || text.includes("wire")) return "3D Printed Tech Organizer";
+  if (text.includes("tea") || text.includes("mason") || text.includes("soap")) return "3D Printed Home Organizer";
+  if (text.includes("pegboard") || text.includes("bit") || text.includes("workshop")) return "3D Printed Workshop Organizer";
+  if (text.includes("file") || text.includes("stamp") || text.includes("desk") || text.includes("printer")) return "3D Printed Desk Organizer";
+  return "3D Printed Organizer";
 }
 
 function etsyDescription(product: Product) {
